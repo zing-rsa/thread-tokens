@@ -4,17 +4,18 @@ use aiken/transaction.{
 }
 use aiken/transaction/credential.{from_verification_key}
 use aiken/transaction/value.{from_lovelace}
+use thread_tokens/types
 
 //------------------------------------------------------------------------------
 // onchain
 
 validator(out: OutputReference) {
   fn policy(_rdm: Redeemer, ctx: ScriptContext) {
-    validate(ctx.transaction.inputs, out)
+    policy_impl(ctx.transaction.inputs, out)
   }
 }
 
-fn validate(inputs: List<Input>, out: OutputReference) -> Bool {
+fn policy_impl(inputs: List<Input>, out: OutputReference) -> Bool {
   expect Some(input) = find_input(inputs, out)
   input.output_reference == out
 }
@@ -45,7 +46,7 @@ test valid() {
       },
     ]
 
-  validate(inputs, outRef)
+  policy_impl(inputs, outRef)
 }
 
 test invalid() fail {
@@ -71,5 +72,5 @@ test invalid() fail {
       },
     ]
 
-  validate(inputs, outRef)
+  policy_impl(inputs, outRef)
 }
