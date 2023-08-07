@@ -1,0 +1,14 @@
+name = "zing-rsa/thread-tokens"
+version = "0.0.0"
+license = "Apache-2.0"
+description = "Aiken contracts for project 'zing-rsa/thread-tokens'"
+
+[repository]
+user = "zing-rsa"
+project = "thread-tokens"
+platform = "github"
+
+[[dependencies]]
+name = "aiken-lang/stdlib"
+version = "1.3.0"
+source = "github"
