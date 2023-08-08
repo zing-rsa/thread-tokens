@@ -14,3 +14,7 @@ pub type ThreadPolicyInfo {
   token_prefix: ByteArray,
   max_supply: Int,
 }
+
+pub type TokenPolicyInfo {
+  thread_policy: PolicyId,
+}

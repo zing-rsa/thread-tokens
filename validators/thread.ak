@@ -1,12 +1,15 @@
+use aiken/builtin.{append_bytearray, encode_utf8}
+use aiken/list
 use aiken/transaction.{
   InlineDatum, Input, NoDatum, Output, OutputReference, Redeemer, ScriptContext,
   Spend, TransactionId, find_input, find_script_outputs,
 }
 use aiken/transaction/credential.{ScriptCredential, from_verification_key}
 use aiken/transaction/value.{
-  MintedValue, from_asset, from_lovelace, from_minted_value, quantity_of,
+  Value, from_asset, from_lovelace, from_minted_value, quantity_of,
 }
 use thread_tokens/types.{PolicyId, ThreadDatum, ThreadPolicyInfo}
+use thread_tokens/util
 
 //------------------------------------------------------------------------------
 // onchain
@@ -23,50 +26,67 @@ fn policy_impl(inputs: List<Input>, out: OutputReference) -> Bool {
 }
 
 validator(thread_policy_info: ThreadPolicyInfo) {
-  fn spend(dtm: ThreadDatum, _rdm: Redeemer, ctx: ScriptContext) {
-    // try use the redeemer for the id of the asset
-    // then check against mintcount
-    // then check asset_prefix + id = minted asset name 
+  fn spend(dtm: ThreadDatum, rdm: Int, ctx: ScriptContext) {
     expect Spend(out_ref) = ctx.purpose
 
     expect Some(own_input) = find_input(ctx.transaction.inputs, out_ref)
-
     expect ScriptCredential(own_hash) =
       own_input.output.address.payment_credential
-
     expect [own_out] = find_script_outputs(ctx.transaction.outputs, own_hash)
+
     expect InlineDatum(dtm_data) = own_out.datum
     expect out_dtm: ThreadDatum = dtm_data
 
-    returns_valid_thread(
-      own_out,
-      thread_policy_info.thread_policy,
-      dtm,
-      out_dtm,
-    ) && below_supply(out_dtm, thread_policy_info.max_supply) && mints_one(
-      ctx.transaction.mint,
-      thread_policy_info.token_policy,
-      thread_policy_info.token_prefix,
+    list.and(
+      [
+        below_supply(out_dtm, thread_policy_info.max_supply),
+        returns_valid_thread(
+          own_out.value,
+          thread_policy_info.thread_policy,
+          dtm,
+          out_dtm,
+        ),
+        valid_mint(
+          from_minted_value(ctx.transaction.mint),
+          thread_policy_info.token_policy,
+          thread_policy_info.token_prefix,
+          rdm,
+          dtm,
+        ),
+      ],
     )
   }
 }
 
 fn returns_valid_thread(
-  out: Output,
+  val: Value,
   policy: PolicyId,
   tx_dtm: ThreadDatum,
   out_dtm: ThreadDatum,
 ) -> Bool {
-  out.value == from_asset(policy, "thread", 1) && out_dtm.mint_count == tx_dtm.mint_count + 1
+  let returns_thread = val == from_asset(policy, "thread", 1)
+  let increments_count = out_dtm.mint_count == tx_dtm.mint_count + 1
+
+  returns_thread && increments_count
 }
 
-fn mints_one(
-  mint: MintedValue,
+fn valid_mint(
+  mint: Value,
   token_policy: PolicyId,
   token_name: ByteArray,
+  mint_id: Int,
+  tx_dtm: ThreadDatum,
 ) -> Bool {
-  quantity_of(from_minted_value(mint), token_policy, token_name) == 1
-  // need to add the mintcount to the token name here
+  let correct_token_name =
+    append_bytearray(
+      token_name,
+      util.left_pad(4, util.int_to_bytearray(mint_id)),
+    )
+
+  let one_token = quantity_of(mint, token_policy, correct_token_name) == 1
+  let correct_id = tx_dtm.mint_count + 1 == mint_id
+
+  one_token && correct_id
 }
 
 fn below_supply(out_dtm: ThreadDatum, max_supply: Int) -> Bool {
@@ -74,7 +94,7 @@ fn below_supply(out_dtm: ThreadDatum, max_supply: Int) -> Bool {
 }
 
 //------------------------------------------------------------------------------
-// testing
+// contract testing
 
 test valid() {
   let outRef =
@@ -126,4 +146,64 @@ test invalid() fail {
     ]
 
   policy_impl(inputs, outRef)
+}
+
+//------------------------------------------------------------------------------
+// unit testing
+
+test test_valid_mint() {
+  let val = from_asset("aaaa", encode_utf8(@"token0001"), 1)
+  let dtm = ThreadDatum { mint_count: 0 }
+
+  valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm)
+}
+
+test test_invalid_mint() fail {
+  let val = from_asset("aaaa", encode_utf8(@"token0001"), 1)
+  let dtm = ThreadDatum { mint_count: 0 }
+  if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
+    True
+  } else {
+    fail
+  }
+}
+
+test test_invalid_id() fail {
+  let val = from_asset("aaaa", encode_utf8(@"token0002"), 1)
+  let dtm = ThreadDatum { mint_count: 0 }
+  if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
+    True
+  } else {
+    fail
+  }
+}
+
+test test_invalid_mint_amount() fail {
+  let val = from_asset("aaaa", encode_utf8(@"token0001"), 2)
+  let dtm = ThreadDatum { mint_count: 0 }
+  if valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm) {
+    True
+  } else {
+    fail
+  }
+}
+
+test test_valid_thread() {
+  let val = from_asset("aaaa", "thread", 1)
+  let tx_dtm = ThreadDatum { mint_count: 0 }
+  let out_dtm = ThreadDatum { mint_count: 1 }
+
+  returns_valid_thread(val, "aaaa", tx_dtm, out_dtm)
+}
+
+test test_invalid_thread() fail {
+  let val = from_asset("aaaa", "thread", 1)
+  let tx_dtm = ThreadDatum { mint_count: 0 }
+  let out_dtm = ThreadDatum { mint_count: 0 }
+
+  if returns_valid_thread(val, "aaaa", tx_dtm, out_dtm) {
+    True
+  } else {
+    fail
+  }
 }
