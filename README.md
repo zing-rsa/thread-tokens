@@ -1,55 +1,26 @@
-# thread-tokens
 
-Write validators in the `validators` folder, and supporting functions in the `lib` folder using `.ak` as a file extension.
+## thread-tokens
 
-For example, as `validators/always_true.ak`
+This is a collection of scripts which faciliate capped and immutable token minting without the need for timelocking the minting policy.
 
-```gleam
-validator {
-  fn spend(_datum: Data, _redeemer: Data, _context: Data) -> Bool {
-    True
-  }
-}
-```
+## Approach
 
-## Building
+### 3 validators: 
 
-```sh
-aiken build
-```
+1. token minting contract
+    - this will only mint the token
+    - checks:
+        - a thread token was consumed
+2. thread token minting contract
+    - this will only mint the thread token
+    - checks: 
+        - that a predifined utxo is consumed(for immutability)
+3. thread token spend validator
+    - this will contain most of the logic
+    - checks: 
+        - a thread token is returned to self
+        - the returned thread token is updated correctly
+        - a token is minted
+        - the minted token has metadata that matches the current state of the thread token
 
-## Testing
 
-You can write tests in any module using the `test` keyword. For example:
-
-```gleam
-test foo() {
-  1 + 1 == 2
-}
-```
-
-To run all tests, simply do:
-
-```sh
-aiken check
-```
-
-To run only tests matching the string `foo`, do:
-
-```sh
-aiken check -m foo
-```
-
-## Documentation
-
-If you're writing a library, you might want to generate an HTML documentation for it.
-
-Use:
-
-```sh
-aiken docs
-```
-
-## Resources
-
-Find more on the [Aiken's user manual](https://aiken-lang.org).
