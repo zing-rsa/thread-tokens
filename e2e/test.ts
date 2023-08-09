@@ -7,7 +7,11 @@ import {
     Address,
     UTxO,
     generatePrivateKey,
-    applyParamsToScript
+    applyParamsToScript,
+    MintingPolicy,
+    fromText,
+    PolicyId,
+    Unit
 } from 'lucid'
 import plutus from '../plutus.json' assert {type: "json"}
 
@@ -17,8 +21,6 @@ const threadPolicyCode = plutus.validators.find(v => v.title == "thread.mint")
 const threadValidatorCode = plutus.validators.find(v => v.title == "thread.spend")
 const tokenPolicyCode = plutus.validators.find(v => v.title == "token.mint")
 
-//if (!threadValidatorCode || !threadPolicyCode || !tokenPolicyCode)
-//    throw new Error('Compiled validator not found'); 
 
 // -----------------------------------------------------------------------
 // types
@@ -61,16 +63,16 @@ type TokenPolicyParams = Data.Static<typeof TokenPolicyParams>
 
 
 
-const Datum = Data.Object({
-//
+const ThreadDatum = Data.Object({
+    mint_count: Data.Integer()
 }) 
-type Datum = Data.Static<typeof Datum>;
+type ThreadDatum = Data.Static<typeof ThreadDatum>;
 
 
 // ------------------------------------------------------------------------
 // policy compilation
 
-function getThreadPolicy(utxo: UTxO) {
+function getThreadPolicy(utxo: UTxO): MintingPolicy {
 
     if (!threadPolicyCode) throw new Error('Thread policy code not found'); 
 
@@ -89,7 +91,7 @@ function getThreadPolicy(utxo: UTxO) {
     }
 }
 
-function getThreadValidator(info: ThreadPolicyInfo) {
+function getThreadValidator(info: ThreadPolicyInfo): SpendingValidator {
 
     if (!threadValidatorCode) throw new Error('Thread validator code not found'); 
 
@@ -103,7 +105,7 @@ function getThreadValidator(info: ThreadPolicyInfo) {
     }
 }
 
-function getTokenPolicy(info: TokenPolicyInfo) {
+function getTokenPolicy(info: TokenPolicyInfo): MintingPolicy {
 
     if (!tokenPolicyCode) throw new Error('Token policy code not found'); 
 
@@ -118,15 +120,21 @@ function getTokenPolicy(info: TokenPolicyInfo) {
 }
 
 // ------------------------------------------------------------------------
-// help functions
+// helper functions
 
 
-async function lock(lucid: Lucid, userKey: PrivateKey, dtm: Datum, scriptAddr: Address) {
+async function deploy(lucid: Lucid, userKey: PrivateKey, policy: MintingPolicy, valAddr: Address, dtm: ThreadDatum) {
     lucid.selectWalletFromPrivateKey(userKey);
+
+    const thread_token: Unit = lucidLib.utils.mintingPolicyToId(policy) + fromText("thread") 
+
+    const asset = { [thread_token] : 1n }
 
     const tx = await lucid
         .newTx()
-        //.payToContract(scriptAddr, { inline: Data.to<Datum>(dtm, Datum)}, { lovelace: 1000000n })
+        .mintAssets(asset, Data.void())
+        .attachMintingPolicy(policy)
+        .payToContract(valAddr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)}, asset)
         .complete()
 
     const txSigned = await tx.sign().complete()
@@ -135,7 +143,6 @@ async function lock(lucid: Lucid, userKey: PrivateKey, dtm: Datum, scriptAddr: A
     return txHash;
 }
 
-// create spend(lucid, user, )
 async function spend(lucid: Lucid, userKey: PrivateKey, utxo: UTxO)   {
     lucid.selectWalletFromPrivateKey(userKey);
 
@@ -154,23 +161,78 @@ async function spend(lucid: Lucid, userKey: PrivateKey, utxo: UTxO)   {
 }
 
 
+// ------------------------------------------------------------------------
+// testing
+
 async function run(testParams: any) {
 
+    //---------------------------------------
+    // setup
+     
     const user1 = generatePrivateKey();
     const address1 = await lucidLib.selectWalletFromPrivateKey(user1).wallet.address();
     console.log('address1', address1)
-
+    
     const user2 = generatePrivateKey();
     const address2 = await lucidLib.selectWalletFromPrivateKey(user2).wallet.address();
     console.log('address2', address2)
 
-//    const scriptAddress = lucidLib.utils.validatorToAddress(validator);
-
     const emulator = new Emulator([
-        { address: address1, assets: { lovelace: 10000000n }}, 
-        { address: address2, assets: { lovelace: 10000000n }},
+        { address: address1, assets: { lovelace: 10000000n }}
     ]);
     const lucid = await Lucid.new(emulator);
+
+    // create thread policy
+    //  use utxo at address for params
+    const addr1_utxo = (await lucid.utxosAt(address1))[0]
+    const thread_policy = getThreadPolicy(addr1_utxo)
+    const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy);
+    console.log('thread policy: ', thread_policy_id)
+
+    // create the token policy  
+    //  use the threadpolicy for params
+    const token_policy_info: TokenPolicyInfo = {
+        thread_policy: thread_policy_id
+    }
+    const token_policy = getTokenPolicy(token_policy_info)
+    const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
+    console.log('token policy: ', token_policy_id)
+    
+    // create the thread val
+    //  use thread pol and token pol for params
+    const thread_val_info: ThreadPolicyInfo = {
+        token_policy: token_policy_id,
+        thread_policy: thread_policy_id,
+        token_prefix: fromText("token"),
+        max_supply: 10n
+
+    } 
+    const thread_validator = getThreadValidator(thread_val_info)
+    const thread_validator_address = lucidLib.utils.validatorToAddress(thread_validator)
+    console.log('thread validator: ', thread_validator_address)
+
+    // tx: addr1 
+    //  mint a thread token
+    //  create dtm
+    //  pay the thread token to the thread val
+    const thread_dtm: ThreadDatum = {
+        mint_count: 0n
+    } 
+    const deployTx = deploy(lucid, user1, thread_policy, thread_validator_address, thread_dtm)
+    console.log('deployed: ', deployTx);
+
+
+    //
+    // tx: addr2
+    //  get dtm from thread val
+    //   increment
+    //  consume thread
+    //  pay thread back
+    //   new dtm
+    //  mint token
+    //   pay token to self
+
+
 
 //    const dtm = {
 //        
@@ -179,16 +241,11 @@ async function run(testParams: any) {
 //    const lockTx = await lock(lucid, user1, dtm, scriptAddress);
 //    console.log('locked: ', lockTx)
 //
-//    const utxoToSpend = (await lucid.utxosAt(scriptAddress))
-//        .find(u => u.datum == Data.to<Datum>(dtm, Datum));
-//
-//    if (!utxoToSpend) throw new Error("Expected Utxos!");
-//    console.log('utxo: ', utxoToSpend);
-//
 //    const spendTx = await spend(lucid, user2, utxoToSpend);
 //    console.log('spent: ', spendTx)
 
 }
+
 
 async function testFails( test: any ) {
         let throws = false;
@@ -202,7 +259,6 @@ async function testFails( test: any ) {
             throw new Error("Test did not fail as expected");
         }
 }
-
     
  async function testSuceeds( test: any) {
    await test() 
