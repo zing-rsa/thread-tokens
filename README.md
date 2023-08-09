@@ -23,4 +23,8 @@ This is a collection of scripts which faciliate capped and immutable token minti
         - a token is minted
         - the minted token has metadata that matches the current state of the thread token
 
+### notes
 
+- structure is a bit weird
+    - all logic for token minting is within the thread token spend validator
+    - could try to swap the role of the token minting policy and the thread validator 
