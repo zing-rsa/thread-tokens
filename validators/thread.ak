@@ -15,8 +15,8 @@ use thread_tokens/util
 validator(out: OutputReference) {
   fn mint(_rdm: Redeemer, ctx: ScriptContext) {
     when find_input(ctx.transaction.inputs, out) is {
-        Some(_) -> True
-        None    -> error 
+      Some(_) -> True
+      None -> fail
     }
   }
 }
