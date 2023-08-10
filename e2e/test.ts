@@ -10,7 +10,6 @@ import {
     applyParamsToScript,
     MintingPolicy,
     fromText,
-    PolicyId,
     Unit
 } from 'lucid'
 import plutus from '../plutus.json' assert {type: "json"}
@@ -26,7 +25,7 @@ const tokenPolicyCode = plutus.validators.find(v => v.title == "token.mint")
 // types
 
 const OutRef = Data.Object({
-    transaction_id: Data.Bytes(),
+    transaction_id: Data.Object({ hash: Data.Bytes()}),
     output_index: Data.Integer()
 })
 type OutRef = Data.Static<typeof OutRef>
@@ -77,7 +76,7 @@ function getThreadPolicy(utxo: UTxO): MintingPolicy {
     if (!threadPolicyCode) throw new Error('Thread policy code not found'); 
 
     const plutus_out_ref: OutRef  = {
-        transaction_id: utxo.txHash,
+        transaction_id: { hash: utxo.txHash },
         output_index: BigInt(utxo.outputIndex)
     }
 
@@ -123,15 +122,18 @@ function getTokenPolicy(info: TokenPolicyInfo): MintingPolicy {
 // helper functions
 
 
-async function deploy(lucid: Lucid, userKey: PrivateKey, policy: MintingPolicy, valAddr: Address, dtm: ThreadDatum) {
+async function deploy(lucid: Lucid, userKey: PrivateKey, policy: MintingPolicy, valAddr: Address, dtm: ThreadDatum, utxo: UTxO) {
     lucid.selectWalletFromPrivateKey(userKey);
 
     const thread_token: Unit = lucidLib.utils.mintingPolicyToId(policy) + fromText("thread") 
 
     const asset = { [thread_token] : 1n }
 
+    console.log('mint thread using: ', `${utxo.txHash}#${utxo.outputIndex}`)
+
     const tx = await lucid
         .newTx()
+        .collectFrom([utxo], Data.void())
         .mintAssets(asset, Data.void())
         .attachMintingPolicy(policy)
         .payToContract(valAddr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)}, asset)
@@ -143,28 +145,56 @@ async function deploy(lucid: Lucid, userKey: PrivateKey, policy: MintingPolicy, 
     return txHash;
 }
 
-async function spend(lucid: Lucid, userKey: PrivateKey, utxo: UTxO)   {
-    lucid.selectWalletFromPrivateKey(userKey);
+async function mint(
+    lucid:Lucid,
+    user_key:PrivateKey,
+    dtm:ThreadDatum,
+    thread:UTxO,
+    policy:MintingPolicy,
+    thread_val: SpendingValidator,
+    thread_policy: MintingPolicy
+) {
+    lucid.selectWalletFromPrivateKey(user_key);
 
-//    const tx = await lucid
-//        .newTx()
-//        .collectFrom([utxo], Data.void())
-//        .attachSpendingValidator(validator)
-//         //.addSigner()      - addr1
-//         //.addSignerKey()   - pubkeyhash
-//         //.validFrom()
-//        .complete()
-//    const txSigned = await tx.sign().complete()
-//    const txHash = await txSigned.submit() 
-//
-//    return txHash;
+    const thread_token: Unit = lucidLib.utils.mintingPolicyToId(thread_policy) + fromText("thread") 
+    const thread_asset = { [thread_token] : 1n }
+
+    const id_text = left_pad(2, dtm.mint_count.toString())
+
+    const token: Unit = lucidLib.utils.mintingPolicyToId(policy) + fromText('token' + id_text)
+    const token_asset = { [token] : 1n }
+
+    const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
+
+    const [utxo] = await lucid.wallet.getUtxos()
+
+    const tx = await lucid
+        .newTx()
+        .collectFrom([utxo], Data.void())
+        .collectFrom([thread], Data.to(dtm.mint_count))
+        .mintAssets(token_asset, Data.void())
+        .attachMintingPolicy(policy)
+        .attachSpendingValidator(thread_val)
+        .payToContract(thread_val_addr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)}, thread_asset)
+        .complete()
+    const txSigned = await tx.sign().complete()
+    const txHash = await txSigned.submit() 
+
+    return txHash;
 }
 
+function left_pad(size: number, s: string): string {
+    let out = s; 
+    for (let i = 0; i < size - s.length; i++) {
+        out = '0' + out
+    } 
+    return out
+}
 
 // ------------------------------------------------------------------------
 // testing
 
-async function run(testParams: any) {
+async function run() {
 
     //---------------------------------------
     // setup
@@ -178,19 +208,16 @@ async function run(testParams: any) {
     console.log('address2', address2)
 
     const emulator = new Emulator([
-        { address: address1, assets: { lovelace: 10000000n }}
+        { address: address1, assets: { lovelace: 100000000n }},
+        { address: address2, assets: { lovelace: 100000000n }}
     ]);
     const lucid = await Lucid.new(emulator);
 
-    // create thread policy
-    //  use utxo at address for params
-    const addr1_utxo = (await lucid.utxosAt(address1))[0]
+    const [addr1_utxo] = await lucid.utxosAt(address1)
     const thread_policy = getThreadPolicy(addr1_utxo)
     const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy);
     console.log('thread policy: ', thread_policy_id)
 
-    // create the token policy  
-    //  use the threadpolicy for params
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id
     }
@@ -198,54 +225,53 @@ async function run(testParams: any) {
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
     console.log('token policy: ', token_policy_id)
     
-    // create the thread val
-    //  use thread pol and token pol for params
     const thread_val_info: ThreadPolicyInfo = {
         token_policy: token_policy_id,
         thread_policy: thread_policy_id,
         token_prefix: fromText("token"),
         max_supply: 10n
-
     } 
     const thread_validator = getThreadValidator(thread_val_info)
     const thread_validator_address = lucidLib.utils.validatorToAddress(thread_validator)
     console.log('thread validator: ', thread_validator_address)
 
-    // tx: addr1 
-    //  mint a thread token
-    //  create dtm
-    //  pay the thread token to the thread val
+    console.log('start state address1: ', await lucid.utxosAt(address1))
+    console.log('start state address2: ', await lucid.utxosAt(address2))
+
+    // ------------------------------------------
+    // transactions 
+     
     const thread_dtm: ThreadDatum = {
         mint_count: 0n
     } 
-    const deployTx = deploy(lucid, user1, thread_policy, thread_validator_address, thread_dtm)
+    const deployTx = await deploy(lucid, user1, thread_policy, thread_validator_address, thread_dtm, addr1_utxo)
     console.log('deployed: ', deployTx);
 
+    emulator.awaitBlock(5);
 
-    //
-    // tx: addr2
-    //  get dtm from thread val
-    //   increment
-    //  consume thread
-    //  pay thread back
-    //   new dtm
-    //  mint token
-    //   pay token to self
+    console.log('address1: ', await lucid.utxosAt(address1))
+    console.log('address2: ', await lucid.utxosAt(address2))
+    console.log('threadaddress: ', await lucid.utxosAt(thread_validator_address))
+    
+    const [thread] = await lucid.utxosAt(thread_validator_address);
+    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
 
+    console.log('found datum: ', locked_thread_dtm)
+    const new_dtm: ThreadDatum = {
+        mint_count: locked_thread_dtm.mint_count + 1n
+    }
+    
+    const mintTx = await mint(lucid, user2, new_dtm, thread, token_policy, thread_validator, thread_policy)
+    console.log('minted: ', mintTx)
 
+    emulator.awaitBlock(5)
 
-//    const dtm = {
-//        
-//    }
-//
-//    const lockTx = await lock(lucid, user1, dtm, scriptAddress);
-//    console.log('locked: ', lockTx)
-//
-//    const spendTx = await spend(lucid, user2, utxoToSpend);
-//    console.log('spent: ', spendTx)
-
+    console.log('address1 utxo:  ', await lucid.utxosAt(address1))
+    console.log('address2 utxo:  ', await lucid.utxosAt(address2))
 }
 
+// -----------------------------------------------------------------------------
+// wrappers
 
 async function testFails( test: any ) {
         let throws = false;
@@ -260,14 +286,20 @@ async function testFails( test: any ) {
         }
 }
     
- async function testSuceeds( test: any) {
+async function testSuceeds( test: any) {
    await test() 
 }
 
+
+// ------------------------------------------------------------------------------
+// main
+
 function main() {
-   Deno.test('', () => testSuceeds(run));
-   Deno.test('', () => testSuceeds(run));
-   Deno.test('', () => testFails(run));
+     Deno.test('mint one', () => testSuceeds(run));
+    
+     Deno.test('leftpad1', () => { if(left_pad(2, '1') != '01') throw new Error('wrong') } )
+     Deno.test('leftpad1', () => { if(left_pad(2, '10') != '10') throw new Error('wrong') } )
+     Deno.test('leftpad1', () => { if(left_pad(4, '100') != '0100') throw new Error('wrong') } )
 }
 
 main();

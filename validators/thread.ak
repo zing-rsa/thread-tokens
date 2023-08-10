@@ -14,8 +14,10 @@ use thread_tokens/util
 
 validator(out: OutputReference) {
   fn mint(_rdm: Redeemer, ctx: ScriptContext) {
-    expect Some(input) = find_input(ctx.transaction.inputs, out)
-    input.output_reference == out
+    when find_input(ctx.transaction.inputs, out) is {
+        Some(_) -> True
+        None    -> error 
+    }
   }
 }
 
@@ -58,7 +60,7 @@ fn returns_valid_thread(
   tx_dtm: ThreadDatum,
   out_dtm: ThreadDatum,
 ) -> Bool {
-  let returns_thread = val == from_asset(policy, "thread", 1)
+  let returns_thread = quantity_of(val, policy, "thread") == 1
   let increments_count = out_dtm.mint_count == tx_dtm.mint_count + 1
 
   returns_thread && increments_count
@@ -74,9 +76,10 @@ fn valid_mint(
   let correct_token_name =
     append_bytearray(
       token_name,
-      util.left_pad(4, util.int_to_bytearray(mint_id)),
+      util.left_pad(2, util.int_to_bytearray(mint_id)),
     )
 
+  // make the left pad dynamic
   let one_token = quantity_of(mint, token_policy, correct_token_name) == 1
   let correct_id = tx_dtm.mint_count + 1 == mint_id
 
@@ -84,7 +87,7 @@ fn valid_mint(
 }
 
 fn below_supply(out_dtm: ThreadDatum, max_supply: Int) -> Bool {
-  out_dtm.mint_count >= max_supply
+  out_dtm.mint_count <= max_supply
 }
 
 //------------------------------------------------------------------------------
@@ -94,14 +97,14 @@ fn below_supply(out_dtm: ThreadDatum, max_supply: Int) -> Bool {
 // unit testing
 
 test test_valid_mint() {
-  let val = from_asset("aaaa", encode_utf8(@"token0001"), 1)
+  let val = from_asset("aaaa", encode_utf8(@"token01"), 1)
   let dtm = ThreadDatum { mint_count: 0 }
 
   valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm)
 }
 
 test test_invalid_mint() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token0001"), 1)
+  let val = from_asset("aaaa", encode_utf8(@"token01"), 1)
   let dtm = ThreadDatum { mint_count: 0 }
   if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
     True
@@ -111,7 +114,7 @@ test test_invalid_mint() fail {
 }
 
 test test_invalid_id() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token0002"), 1)
+  let val = from_asset("aaaa", encode_utf8(@"token02"), 1)
   let dtm = ThreadDatum { mint_count: 0 }
   if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
     True
@@ -121,7 +124,7 @@ test test_invalid_id() fail {
 }
 
 test test_invalid_mint_amount() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token0001"), 2)
+  let val = from_asset("aaaa", encode_utf8(@"token01"), 2)
   let dtm = ThreadDatum { mint_count: 0 }
   if valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm) {
     True
