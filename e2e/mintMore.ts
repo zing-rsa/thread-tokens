@@ -1,17 +1,30 @@
 import {
-    Lucid,
-    Emulator,
     SpendingValidator,
-    PrivateKey,
-    Data,
-    Address,
-    UTxO,
-    generatePrivateKey,
-    applyParamsToScript,
     MintingPolicy,
+    PrivateKey,
+    Emulator,
+    Address,
+    Lucid,
+    Data,
+    UTxO,
+    Unit,
+    applyParamsToScript,
+    generatePrivateKey,
     fromText,
-    Unit
 } from 'lucid'
+import {
+    ThreadValidatorParamsShape,
+    ThreadValidatorParams,
+    ThreadPolicyParamsShape,
+    ThreadPolicyParams,
+    TokenPolicyParamsShape,
+    TokenPolicyParams,
+    ThreadValidatorInfo,
+    TokenPolicyInfo,
+    ThreadDatumShape,
+    ThreadDatum,
+    OutRef,
+} from './types.ts'
 import plutus from '../plutus.json' assert {type: "json"}
 
 const lucidLib = await Lucid.new(undefined, "Custom");
@@ -19,54 +32,6 @@ const lucidLib = await Lucid.new(undefined, "Custom");
 const threadPolicyCode = plutus.validators.find(v => v.title == "thread.mint")
 const threadValidatorCode = plutus.validators.find(v => v.title == "thread.spend")
 const tokenPolicyCode = plutus.validators.find(v => v.title == "token.mint")
-
-
-// -----------------------------------------------------------------------
-// types
-
-const OutRef = Data.Object({
-    transaction_id: Data.Object({ hash: Data.Bytes()}),
-    output_index: Data.Integer()
-})
-type OutRef = Data.Static<typeof OutRef>
-
-const ThreadPolicyParams = Data.Tuple([
-    OutRef
-])
-type ThreadPolicyParams = Data.Static<typeof ThreadPolicyParams>;
-
-
-const ThreadPolicyInfo = Data.Object({
-  thread_policy: Data.Bytes(),
-  token_policy: Data.Bytes(),
-  token_prefix: Data.Bytes(),
-  max_supply: Data.Integer(),
-})
-type ThreadPolicyInfo = Data.Static<typeof ThreadPolicyInfo>;
-
-const ThreadValidatorParams = Data.Tuple([
-    ThreadPolicyInfo
-]);
-type ThreadValidatorParams = Data.Static<typeof ThreadValidatorParams>
-
-
-const TokenPolicyInfo = Data.Object({
-    thread_policy: Data.Bytes()    
-})
-type TokenPolicyInfo = Data.Static<typeof TokenPolicyInfo>
-
-const TokenPolicyParams = Data.Tuple([
-    TokenPolicyInfo
-])
-type TokenPolicyParams = Data.Static<typeof TokenPolicyParams>
-
-
-
-const ThreadDatum = Data.Object({
-    mint_count: Data.Integer()
-}) 
-type ThreadDatum = Data.Static<typeof ThreadDatum>;
-
 
 // ------------------------------------------------------------------------
 // policy compilation
@@ -85,12 +50,12 @@ function getThreadPolicy(utxo: UTxO): MintingPolicy {
         "script": applyParamsToScript<ThreadPolicyParams>(
             threadPolicyCode.compiledCode,
             [plutus_out_ref],
-            ThreadPolicyParams
+            ThreadPolicyParamsShape
         )
     }
 }
 
-function getThreadValidator(info: ThreadPolicyInfo): SpendingValidator {
+function getThreadValidator(info: ThreadValidatorInfo ): SpendingValidator {
 
     if (!threadValidatorCode) throw new Error('Thread validator code not found'); 
 
@@ -99,7 +64,7 @@ function getThreadValidator(info: ThreadPolicyInfo): SpendingValidator {
         "script": applyParamsToScript<ThreadValidatorParams>(
             threadValidatorCode.compiledCode,
             [info],
-            ThreadValidatorParams
+            ThreadValidatorParamsShape
         )
     }
 }
@@ -113,7 +78,7 @@ function getTokenPolicy(info: TokenPolicyInfo): MintingPolicy {
         "script": applyParamsToScript<TokenPolicyParams>(
             tokenPolicyCode.compiledCode,
             [info],
-            TokenPolicyParams
+            TokenPolicyParamsShape
         )
     }
 }
@@ -136,7 +101,7 @@ async function deploy(lucid: Lucid, userKey: PrivateKey, policy: MintingPolicy, 
         .collectFrom([utxo], Data.void())
         .mintAssets(asset, Data.void())
         .attachMintingPolicy(policy)
-        .payToContract(valAddr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)}, asset)
+        .payToContract(valAddr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatumShape)}, asset)
         .complete()
 
     const txSigned = await tx.sign().complete()
@@ -171,11 +136,11 @@ async function mint(
     const tx = await lucid
         .newTx()
         .collectFrom([utxo], Data.void())
-        .collectFrom([thread], Data.to(dtm.mint_count))
-        .mintAssets(token_asset, Data.void())
+        .collectFrom([thread], Data.void())
+        .mintAssets(token_asset, Data.to(dtm.mint_count))
         .attachMintingPolicy(policy)
         .attachSpendingValidator(thread_val)
-        .payToContract(thread_val_addr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)}, thread_asset)
+        .payToContract(thread_val_addr, { inline: Data.to<ThreadDatum>(dtm, ThreadDatumShape)}, thread_asset)
         .complete()
     const txSigned = await tx.sign().complete()
     const txHash = await txSigned.submit() 
@@ -219,17 +184,17 @@ async function run() {
     console.log('thread policy: ', thread_policy_id)
 
     const token_policy_info: TokenPolicyInfo = {
-        thread_policy: thread_policy_id
+        thread_policy: thread_policy_id,
+        token_prefix: fromText("token"),
+        max_supply: 10n
     }
     const token_policy = getTokenPolicy(token_policy_info)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
     console.log('token policy: ', token_policy_id)
     
-    const thread_val_info: ThreadPolicyInfo = {
+    const thread_val_info: ThreadValidatorInfo = {
         token_policy: token_policy_id,
         thread_policy: thread_policy_id,
-        token_prefix: fromText("token"),
-        max_supply: 10n
     } 
     const thread_validator = getThreadValidator(thread_val_info)
     const thread_validator_address = lucidLib.utils.validatorToAddress(thread_validator)
@@ -253,10 +218,10 @@ async function run() {
     console.log('address2: ', await lucid.utxosAt(address2))
     console.log('threadaddress: ', await lucid.utxosAt(thread_validator_address))
     
-    for (let i = 0; i < thread_val_info.max_supply + 1n; i++) {
+    for (let i = 0; i < token_policy_info.max_supply + 1n; i++) {
         const [thread] = await lucid.utxosAt(thread_validator_address);
 
-        const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
+        const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatumShape) 
 
         console.log('found datum: ', locked_thread_dtm)
         const new_dtm: ThreadDatum = {

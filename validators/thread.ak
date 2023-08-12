@@ -1,13 +1,11 @@
-use aiken/builtin.{append_bytearray, encode_utf8}
 use aiken/list
 use aiken/transaction.{
   InlineDatum, OutputReference, Redeemer, ScriptContext, Spend, find_input,
   find_script_outputs,
 }
 use aiken/transaction/credential.{ScriptCredential}
-use aiken/transaction/value.{Value, from_asset, from_minted_value, quantity_of}
-use thread_tokens/types.{PolicyId, ThreadDatum, ThreadPolicyInfo}
-use thread_tokens/util
+use aiken/transaction/value.{from_minted_value, policies, quantity_of}
+use thread_tokens/types.{ThreadDatum, ThreadValidatorInfo}
 
 //------------------------------------------------------------------------------
 // onchain
@@ -21,8 +19,8 @@ validator(out: OutputReference) {
   }
 }
 
-validator(thread_policy_info: ThreadPolicyInfo) {
-  fn spend(dtm: ThreadDatum, rdm: Int, ctx: ScriptContext) {
+validator(info: ThreadValidatorInfo) {
+  fn spend(dtm: ThreadDatum, _rdm: Void, ctx: ScriptContext) {
     expect Spend(out_ref) = ctx.purpose
 
     expect Some(own_input) = find_input(ctx.transaction.inputs, out_ref)
@@ -33,122 +31,40 @@ validator(thread_policy_info: ThreadPolicyInfo) {
     expect InlineDatum(dtm_data) = own_out.datum
     expect out_dtm: ThreadDatum = dtm_data
 
-    list.and(
-      [
-        below_supply(out_dtm, thread_policy_info.max_supply),
-        returns_valid_thread(
-          own_out.value,
-          thread_policy_info.thread_policy,
-          dtm,
-          out_dtm,
-        ),
-        valid_mint(
-          from_minted_value(ctx.transaction.mint),
-          thread_policy_info.token_policy,
-          thread_policy_info.token_prefix,
-          rdm,
-          dtm,
-        ),
-      ],
-    )
+    let mint = from_minted_value(ctx.transaction.mint)
+
+    let returns_thread =
+      quantity_of(own_out.value, info.thread_policy, "thread") == 1
+
+    let mints_tokens = list.has(policies(mint), info.token_policy)
+
+    let increments_count = out_dtm.mint_count == dtm.mint_count + 1
+
+    returns_thread && mints_tokens && increments_count
   }
 }
-
-fn returns_valid_thread(
-  val: Value,
-  policy: PolicyId,
-  tx_dtm: ThreadDatum,
-  out_dtm: ThreadDatum,
-) -> Bool {
-  let returns_thread = quantity_of(val, policy, "thread") == 1
-  let increments_count = out_dtm.mint_count == tx_dtm.mint_count + 1
-
-  returns_thread && increments_count
-}
-
-fn valid_mint(
-  mint: Value,
-  token_policy: PolicyId,
-  token_name: ByteArray,
-  mint_id: Int,
-  tx_dtm: ThreadDatum,
-) -> Bool {
-  let correct_token_name =
-    append_bytearray(
-      token_name,
-      util.left_pad(2, util.int_to_bytearray(mint_id)),
-    )
-
-  // make the left pad dynamic
-  let one_token = quantity_of(mint, token_policy, correct_token_name) == 1
-  let correct_id = tx_dtm.mint_count + 1 == mint_id
-
-  one_token && correct_id
-}
-
-fn below_supply(out_dtm: ThreadDatum, max_supply: Int) -> Bool {
-  out_dtm.mint_count <= max_supply
-}
-
 //------------------------------------------------------------------------------
 // contract testing
 
 //------------------------------------------------------------------------------
 // unit testing
 
-test test_valid_mint() {
-  let val = from_asset("aaaa", encode_utf8(@"token01"), 1)
-  let dtm = ThreadDatum { mint_count: 0 }
-
-  valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm)
-}
-
-test test_invalid_mint() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token01"), 1)
-  let dtm = ThreadDatum { mint_count: 0 }
-  if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
-    True
-  } else {
-    fail
-  }
-}
-
-test test_invalid_id() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token02"), 1)
-  let dtm = ThreadDatum { mint_count: 0 }
-  if valid_mint(val, "aaaa", encode_utf8(@"token"), 2, dtm) {
-    True
-  } else {
-    fail
-  }
-}
-
-test test_invalid_mint_amount() fail {
-  let val = from_asset("aaaa", encode_utf8(@"token01"), 2)
-  let dtm = ThreadDatum { mint_count: 0 }
-  if valid_mint(val, "aaaa", encode_utf8(@"token"), 1, dtm) {
-    True
-  } else {
-    fail
-  }
-}
-
-test test_valid_thread() {
-  let val = from_asset("aaaa", "thread", 1)
-  let tx_dtm = ThreadDatum { mint_count: 0 }
-  let out_dtm = ThreadDatum { mint_count: 1 }
-
-  returns_valid_thread(val, "aaaa", tx_dtm, out_dtm)
-}
-
-test test_invalid_thread() fail {
-  let val = from_asset("aaaa", "thread", 1)
-  let tx_dtm = ThreadDatum { mint_count: 0 }
-  let out_dtm = ThreadDatum { mint_count: 0 }
-
-  if returns_valid_thread(val, "aaaa", tx_dtm, out_dtm) {
-    True
-  } else {
-    fail
-  }
-}
+//test test_valid_thread() {
+//  let val = from_asset("aaaa", "thread", 1)
+//  let tx_dtm = ThreadDatum { mint_count: 0 }
+//  let out_dtm = ThreadDatum { mint_count: 1 }
+//
+//  returns_valid_thread(val, "aaaa", tx_dtm, out_dtm)
+//}
+//
+//test test_invalid_thread() fail {
+//  let val = from_asset("aaaa", "thread", 1)
+//  let tx_dtm = ThreadDatum { mint_count: 0 }
+//  let out_dtm = ThreadDatum { mint_count: 0 }
+//
+//  if returns_valid_thread(val, "aaaa", tx_dtm, out_dtm) {
+//    True
+//  } else {
+//    fail
+//  }
+//}

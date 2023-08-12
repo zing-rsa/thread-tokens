@@ -8,13 +8,13 @@ pub type ThreadDatum {
   mint_count: Int,
 }
 
-pub type ThreadPolicyInfo {
+pub type ThreadValidatorInfo {
   thread_policy: PolicyId,
   token_policy: PolicyId,
-  token_prefix: ByteArray,
-  max_supply: Int,
 }
 
 pub type TokenPolicyInfo {
   thread_policy: PolicyId,
+  token_prefix: ByteArray,
+  max_supply: Int,
 }
