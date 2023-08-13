@@ -3,13 +3,13 @@
 
 This is a collection of scripts which faciliate capped and immutable token minting without the need for timelocking the minting policy.
 
-### Features
+### Goals 
 - no timelocking
     - the policy is not required to be timelocked because tokens are instead tied to long lasting state(utxos) on chain
 - parallel minting
     - multiple thread tokens allow multiple mints per block
-- incremented token names
-    - token name incremements are governed by onchain logic
+- token name governed onchain
+    - token name increments are governed by onchain logic
 
 ## Approach
 
