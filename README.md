@@ -10,6 +10,10 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - multiple thread tokens allow multiple mints per block
 - token name governed onchain
     - token name increments are governed by onchain logic
+- implement cip68
+    - mint a ref token and user token
+    - ref token contains metadata datum
+    - user token is token in users wallet
 
 ## Approach
 
@@ -32,3 +36,20 @@ This is a collection of scripts which faciliate capped and immutable token minti
         - the returned thread token is updated correctly
         - a token is minted
 
+
+
+
+## CIP68
+- mint validator must check that ref and user token are minted
+    - one of each
+    - same names 
+    - correct prefixes
+    - 
+
+## Ownership
+- mint an ownership token that is a param of the minting policy
+- this token is required to be spent for the metadata control policy
+    - meta control validator is parameterized by this token
+    - must spend this token to spend a metadata/ref utxo
+
+    

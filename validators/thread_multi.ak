@@ -45,28 +45,3 @@ validator(info: ThreadValidatorInfo) {
     returns_thread && mints_tokens && increments_count && maintains_idx
   }
 }
-//------------------------------------------------------------------------------
-// contract testing
-
-//------------------------------------------------------------------------------
-// unit testing
-
-//test test_valid_thread() {
-//  let val = from_asset("aaaa", "thread", 1)
-//  let tx_dtm = ThreadDatum { mint_count: 0 }
-//  let out_dtm = ThreadDatum { mint_count: 1 }
-//
-//  returns_valid_thread(val, "aaaa", tx_dtm, out_dtm)
-//}
-//
-//test test_invalid_thread() fail {
-//  let val = from_asset("aaaa", "thread", 1)
-//  let tx_dtm = ThreadDatum { mint_count: 0 }
-//  let out_dtm = ThreadDatum { mint_count: 0 }
-//
-//  if returns_valid_thread(val, "aaaa", tx_dtm, out_dtm) {
-//    True
-//  } else {
-//    fail
-//  }
-//}
