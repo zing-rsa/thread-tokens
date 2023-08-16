@@ -37,14 +37,13 @@ This is a collection of scripts which faciliate capped and immutable token minti
         - a token is minted
 
 
-
-
 ## CIP68
 - mint validator must check that ref and user token are minted
     - one of each
     - same names 
     - correct prefixes
-    - 
+- both tokens required to come from the same policy
+
 
 ## Ownership
 - mint an ownership token that is a param of the minting policy
