@@ -2,9 +2,10 @@ use aiken/builtin.{append_bytearray}
 use aiken/bytearray.{concat}
 use aiken/list
 use aiken/transaction.{InlineDatum, Mint, ScriptContext}
+use aiken/transaction/credential.{Address, ScriptCredential}
 use aiken/transaction/value.{flatten, from_minted_value, quantity_of}
 use constants
-use thread_tokens/types_multi.{ThreadDatum, TokenPolicyInfo}
+use thread_tokens/types_cip68.{ThreadDatum, TokenPolicyInfo}
 use thread_tokens/util.{int_to_bytearray, left_pad}
 
 validator(info: TokenPolicyInfo) {
@@ -22,6 +23,17 @@ validator(info: TokenPolicyInfo) {
 
     expect [(ref_policy, ref_name, 1), (usert_policy, usert_name, 1)] =
       flatten(from_minted_value(ctx.transaction.mint))
+
+    expect Some(_pays_ref_to_meta) =
+      list.find(
+        ctx.transaction.outputs,
+        fn(o) {
+          quantity_of(o.value, ref_policy, ref_name) == 1 && o.address == Address {
+            payment_credential: ScriptCredential(info.meta_val),
+            stake_credential: None,
+          }
+        },
+      )
 
     let correct_id =
       rdm == info.max_supply / info.thread_count * thread_dtm.idx + thread_dtm.mint_count + 1

@@ -9,6 +9,7 @@ pub type ValidatorHash =
 
 pub type ThreadDatum {
   mint_count: Int,
+  idx: Int,
 }
 
 pub type ThreadValidatorInfo {
@@ -20,5 +21,6 @@ pub type TokenPolicyInfo {
   thread_policy: PolicyId,
   token_prefix: ByteArray,
   max_supply: Int,
+  thread_count: Int,
   meta_val: ValidatorHash,
 }

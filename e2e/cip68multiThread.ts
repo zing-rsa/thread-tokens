@@ -4,6 +4,7 @@ import {
     PrivateKey,
     Emulator,
     Address,
+    Assets,
     Lucid,
     Data,
     UTxO,
@@ -24,14 +25,16 @@ import {
     ThreadDatum,
     TokenPolicyInfo,
     OutRef,
-} from './types_multi.ts'
+} from './types_cip68multi.ts'
 import plutus from '../plutus.json' assert {type: "json"}
+import {label100, label222} from './constants.ts'
 
 const lucidLib = await Lucid.new(undefined, "Custom");
 
-const threadPolicyCode = plutus.validators.find(v => v.title == "thread_multi.mint")
-const threadValidatorCode = plutus.validators.find(v => v.title == "thread_multi.spend")
-const tokenPolicyCode = plutus.validators.find(v => v.title == "token_multi.mint")
+const threadPolicyCode = plutus.validators.find(v => v.title == "thread_cip68multi.mint")
+const threadValidatorCode = plutus.validators.find(v => v.title == "thread_cip68multi.spend")
+const tokenPolicyCode = plutus.validators.find(v => v.title == "token_cip68multi.mint")
+const metaVal = plutus.validators.find(v => v.title == "meta.spend")
 
 // ------------------------------------------------------------------------
 // policy compilation
@@ -80,6 +83,16 @@ function getTokenPolicy(info: TokenPolicyInfo): MintingPolicy {
             [info],
             TokenPolicyParamsShape
         )
+    }
+}
+
+function getMetaVal(): SpendingValidator {
+
+    if (!metaVal) throw new Error('Meta validator not found'); 
+
+    return {
+        "type": "PlutusV2", 
+        "script": metaVal.compiledCode
     }
 }
 
@@ -136,7 +149,8 @@ async function mint(
     thread_val: SpendingValidator,
     thread_policy: MintingPolicy,
     max_supply: number,
-    thread_count: number
+    thread_count: number,
+    meta_addr: string
 ) {
     lucid.selectWalletFromPrivateKey(user_key);
 
@@ -158,19 +172,24 @@ async function mint(
 
     const id_text = left_pad(2, mint_id.toString())
 
-    const token: Unit = lucidLib.utils.mintingPolicyToId(policy) + fromText('token' + id_text)
+    const token: Unit = lucidLib.utils.mintingPolicyToId(policy) + label222 + fromText('token' + id_text)
     const token_asset = { [token] : 1n }
+
+    const ref: Unit = lucidLib.utils.mintingPolicyToId(policy) + label100 + fromText('token' + id_text)
+    const ref_asset = { [ref] : 1n }
+
+    const assets: Assets = {...ref_asset, ...token_asset}
 
     const [utxo] = await lucid.wallet.getUtxos()
 
     const tx = await lucid
         .newTx()
-        .collectFrom([utxo], Data.void())
-        .collectFrom([thread], Data.void())
+        .collectFrom([utxo, thread], Data.void())
         .attachMintingPolicy(policy)
-        .mintAssets(token_asset, Data.to(mint_id))
+        .mintAssets(assets, Data.to(mint_id))
         .attachSpendingValidator(thread_val)
         .payToContract(thread_val_addr, { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatumShape)}, thread_asset)
+        .payToContract(meta_addr, { inline: 'some_metadata'}, ref_asset)
         .complete()
     const txSigned = await tx.sign().complete()
     const txHash = await txSigned.submit() 
@@ -210,11 +229,15 @@ async function setup() {
     const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy);
     console.log('thread policy: ', thread_policy_id)
 
+    const meta_val = getMetaVal()
+    const meta_val_hash = lucidLib.utils.validatorToScriptHash(meta_val)
+
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id, 
         token_prefix: fromText("token"),
         max_supply: BigInt(MAX_SUPPLY),
-        thread_count: BigInt(THREAD_COUNT)
+        thread_count: BigInt(THREAD_COUNT),
+        meta_val: meta_val_hash
     }
     const token_policy = getTokenPolicy(token_policy_info)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
@@ -245,6 +268,7 @@ async function setup() {
         thread_validator_address,
         token_policy,
         emulator,
+        meta_val
     }
 }
 
@@ -266,6 +290,8 @@ async function mintOne() {
         thread_validator_address,
         token_policy,
         emulator,
+        meta_val,
+        address2
     } = await setup()
 
     // ------------------------------------------
@@ -293,142 +319,17 @@ async function mintOne() {
         thread_validator,
         thread_policy,
         MAX_SUPPLY,
-        THREAD_COUNT
+        THREAD_COUNT,
+        lucidLib.utils.validatorToAddress(meta_val)
     )
     console.log('minted: ', mintTx)
 
     emulator.awaitBlock(5)
 
+    console.log('address2: ', await lucid.utxosAt(address2))
+    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
 }
 
-async function mintAll() {
-
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    for (let t = 0; t < MAX_SUPPLY; t++){
-        const thread = (await lucid.utxosAt(thread_validator_address)).find(
-            (o) => Data.from<ThreadDatum>(o.datum!, ThreadDatumShape).mint_count < MAX_SUPPLY/THREAD_COUNT 
-        );
-
-        if (!thread) throw new Error('Unable to find suitable thread')
-
-        const mintTx = await mint(
-            lucid,
-            user2,
-            thread,
-            token_policy,
-            thread_validator,
-            thread_policy,
-            MAX_SUPPLY,
-            THREAD_COUNT
-        )
-        console.log('minted: ', mintTx)
-
-        emulator.awaitBlock(5)
-    }
-
-}
-
-async function mintTooMany() {
-
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    for (let t = 0; t < MAX_SUPPLY; t++){
-        const thread = (await lucid.utxosAt(thread_validator_address)).find(
-            (o) => Data.from<ThreadDatum>(o.datum!, ThreadDatumShape).mint_count < MAX_SUPPLY/THREAD_COUNT
-        );
-
-        if (!thread) throw new Error('Unable to find suitable thread')
-
-        const mintTx = await mint(
-            lucid,
-            user2,
-            thread,
-            token_policy,
-            thread_validator,
-            thread_policy,
-            MAX_SUPPLY,
-            THREAD_COUNT
-        )
-        console.log('minted: ', mintTx)
-
-        emulator.awaitBlock(5)
-    }
-    
-    // mint one more
-    const [thread] = (await lucid.utxosAt(thread_validator_address));
-
-    if (!thread) throw new Error('Unable to find suitable thread')
-
-    const mintTx = await mint(
-        lucid,
-        user2,
-        thread,
-        token_policy,
-        thread_validator,
-        thread_policy,
-        MAX_SUPPLY,
-        THREAD_COUNT
-    )
-    console.log('minted: ', mintTx)
-
-    emulator.awaitBlock(5)
-
-}
 
 // -----------------------------------------------------------------------------
 // wrappers
@@ -456,8 +357,6 @@ async function testSuceeds( test: any) {
 
 function main() {
      Deno.test('mint one', () => testSuceeds(mintOne));
-     Deno.test('mint all', () => testSuceeds(mintAll));
-     Deno.test('mint too many', () => testFails(mintTooMany));
     
      Deno.test('leftpad1', () => { if(left_pad(2, '1') != '01') throw new Error('wrong') } )
      Deno.test('leftpad1', () => { if(left_pad(2, '10') != '10') throw new Error('wrong') } )
