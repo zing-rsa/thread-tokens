@@ -25,15 +25,15 @@ import {
     ThreadDatum,
     TokenPolicyInfo,
     OutRef,
-} from './types_cip68multi.ts'
+} from './types_cipsixeightmulti.ts'
 import plutus from '../plutus.json' assert {type: "json"}
 import {label100, label222} from './constants.ts'
 
 const lucidLib = await Lucid.new(undefined, "Custom");
 
-const threadPolicyCode = plutus.validators.find(v => v.title == "thread_cip68multi.mint")
-const threadValidatorCode = plutus.validators.find(v => v.title == "thread_cip68multi.spend")
-const tokenPolicyCode = plutus.validators.find(v => v.title == "token_cip68multi.mint")
+const threadPolicyCode = plutus.validators.find(v => v.title == "thread_cipsixeightmulti.mint")
+const threadValidatorCode = plutus.validators.find(v => v.title == "thread_cipsixeightmulti.spend")
+const tokenPolicyCode = plutus.validators.find(v => v.title == "token_cipsixeightmulti.mint")
 const metaVal = plutus.validators.find(v => v.title == "meta.spend")
 
 // ------------------------------------------------------------------------

@@ -5,7 +5,7 @@ use aiken/transaction.{InlineDatum, Mint, ScriptContext}
 use aiken/transaction/credential.{Address, ScriptCredential}
 use aiken/transaction/value.{flatten, from_minted_value, quantity_of}
 use constants
-use thread_tokens/types_cip68.{ThreadDatum, TokenPolicyInfo}
+use thread_tokens/types_cipsixeight.{ThreadDatum, TokenPolicyInfo}
 use thread_tokens/util.{int_to_bytearray, left_pad}
 
 validator(info: TokenPolicyInfo) {
