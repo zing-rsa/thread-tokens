@@ -21,7 +21,10 @@ validator(info: TokenPolicyInfo) {
     expect InlineDatum(thread_data) = thread_in.output.datum
     expect thread_dtm: ThreadDatum = thread_data
 
-    expect [(ref_policy, ref_name, 1), (usert_policy, usert_name, 1)] =
+    expect [
+        (ref_policy, ref_name, ref_qty), 
+        (usert_policy, usert_name, usert_qty)
+    ] =
       flatten(from_minted_value(ctx.transaction.mint))
 
     expect Some(_pays_ref_to_meta) =
@@ -50,6 +53,8 @@ validator(info: TokenPolicyInfo) {
 
     let policies_match = own_policy == usert_policy && own_policy == ref_policy
 
-    correct_id && below_supply && ref_name_correct && usert_name_correct && policies_match
+    let single_mint = usert_qty == 1 && ref_qty == 1
+
+    correct_id && below_supply && ref_name_correct && usert_name_correct && policies_match && single_mint
   }
 }
