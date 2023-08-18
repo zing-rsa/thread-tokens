@@ -49,3 +49,13 @@ export const TokenPolicyParamsShape = Data.Tuple([
 ])
 export type TokenPolicyParams = Data.Static<typeof TokenPolicyParamsShape>
 
+export const MetaPolicyInfoShape = Data.Object({
+    ownership_policy: Data.Bytes(),
+    ownership_name: Data.Bytes()
+})
+export type MetaPolicyInfo = Data.Static<typeof MetaPolicyInfoShape>
+
+export const MetaPolicyParamsShape = Data.Tuple([
+    MetaPolicyInfoShape
+])
+export type MetaPolicyParams = Data.Static<typeof MetaPolicyParamsShape>

@@ -14,6 +14,11 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - mint a ref token and user token
     - ref token contains metadata datum
     - user token is token in users wallet
+- metadata control
+    - owners should be able to update metadata
+    - will require an ownership token
+    - will require the ref token to be sent to a validator
+
 
 ## Approach
 

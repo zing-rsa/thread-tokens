@@ -24,3 +24,8 @@ pub type TokenPolicyInfo {
   thread_count: Int,
   meta_val: ValidatorHash,
 }
+
+pub type MetaInfo {
+  ownership_policy: PolicyId,
+  ownership_name: ByteArray,
+}
