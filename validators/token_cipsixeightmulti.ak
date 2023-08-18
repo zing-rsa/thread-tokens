@@ -22,10 +22,9 @@ validator(info: TokenPolicyInfo) {
     expect thread_dtm: ThreadDatum = thread_data
 
     expect [
-        (ref_policy, ref_name, ref_qty), 
-        (usert_policy, usert_name, usert_qty)
-    ] =
-      flatten(from_minted_value(ctx.transaction.mint))
+      (ref_policy, ref_name, ref_qty),
+      (usert_policy, usert_name, usert_qty),
+    ] = flatten(from_minted_value(ctx.transaction.mint))
 
     expect Some(_pays_ref_to_meta) =
       list.find(

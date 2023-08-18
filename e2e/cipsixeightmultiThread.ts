@@ -12,6 +12,7 @@ import {
     applyParamsToScript,
     generatePrivateKey,
     fromText,
+    toUnit
 } from 'lucid'
 import {
     ThreadValidatorParamsShape,
@@ -27,7 +28,6 @@ import {
     OutRef,
 } from './types_cipsixeightmulti.ts'
 import plutus from '../plutus.json' assert {type: "json"}
-import {label100, label222} from './constants.ts'
 
 const lucidLib = await Lucid.new(undefined, "Custom");
 
@@ -147,15 +147,15 @@ async function mint(
     thread:UTxO,
     policy:MintingPolicy,
     thread_val: SpendingValidator,
-    thread_policy: MintingPolicy,
+    thread_mintpolicy: MintingPolicy,
     max_supply: number,
     thread_count: number,
     meta_addr: string
 ) {
     lucid.selectWalletFromPrivateKey(user_key);
 
-    const thread_token: Unit = lucidLib.utils.mintingPolicyToId(thread_policy) + fromText("thread") 
-    const thread_asset = { [thread_token] : 1n }
+    const token_policy = lucidLib.utils.mintingPolicyToId(policy);
+    const thread_policy = lucidLib.utils.mintingPolicyToId(thread_mintpolicy)
 
     const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
 
@@ -172,24 +172,23 @@ async function mint(
 
     const id_text = left_pad(2, mint_id.toString())
 
-    const token: Unit = lucidLib.utils.mintingPolicyToId(policy) + label222 + fromText('token' + id_text)
-    const token_asset = { [token] : 1n }
-
-    const ref: Unit = lucidLib.utils.mintingPolicyToId(policy) + label100 + fromText('token' + id_text)
-    const ref_asset = { [ref] : 1n }
-
-    const assets: Assets = {...ref_asset, ...token_asset}
-
     const [utxo] = await lucid.wallet.getUtxos()
 
     const tx = await lucid
         .newTx()
         .collectFrom([utxo, thread], Data.void())
         .attachMintingPolicy(policy)
-        .mintAssets(assets, Data.to(mint_id))
+        .mintAssets({
+            [toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n,
+            [toUnit(token_policy, fromText('token') + fromText(id_text), 222)]: 1n,
+        }, Data.to(mint_id))
         .attachSpendingValidator(thread_val)
-        .payToContract(thread_val_addr, { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatumShape)}, thread_asset)
-        .payToContract(meta_addr, { inline: 'some_metadata'}, ref_asset)
+        .payToContract(thread_val_addr, 
+                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatumShape)},
+                       {[toUnit(thread_policy, fromText("thread"))] : 1n } )
+        .payToContract(meta_addr, 
+                       { inline: Data.to<string>(fromText('some metadata'))},
+                       {[toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n})
         .complete()
     const txSigned = await tx.sign().complete()
     const txHash = await txSigned.submit() 

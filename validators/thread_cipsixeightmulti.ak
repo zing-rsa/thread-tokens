@@ -5,7 +5,7 @@ use aiken/transaction.{
 }
 use aiken/transaction/credential.{ScriptCredential}
 use aiken/transaction/value.{from_minted_value, policies, quantity_of}
-use thread_tokens/types.{ThreadDatum, ThreadValidatorInfo}
+use thread_tokens/types_cipsixeight.{ThreadDatum, ThreadValidatorInfo}
 
 //------------------------------------------------------------------------------
 // onchain
@@ -40,6 +40,6 @@ validator(info: ThreadValidatorInfo) {
 
     let increments_count = out_dtm.mint_count == dtm.mint_count + 1
 
-    returns_thread && mints_tokens && increments_count
+    mints_tokens && returns_thread && increments_count
   }
 }
