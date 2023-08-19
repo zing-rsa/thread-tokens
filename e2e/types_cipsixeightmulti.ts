@@ -59,3 +59,9 @@ export const MetaPolicyParamsShape = Data.Tuple([
     MetaPolicyInfoShape
 ])
 export type MetaPolicyParams = Data.Static<typeof MetaPolicyParamsShape>
+
+export const ActionShape = Data.Enum([
+    Data.Literal("Minting"),
+    Data.Literal("Burning"),
+])
+export type Action = Data.Static<typeof ActionShape>

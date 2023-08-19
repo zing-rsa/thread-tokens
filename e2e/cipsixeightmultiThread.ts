@@ -28,6 +28,8 @@ import {
     ThreadDatumShape,
     ThreadDatum,
     TokenPolicyInfo,
+    ActionShape,
+    Action,
     OutRef,
 } from './types_cipsixeightmulti.ts'
 import plutus from '../plutus.json' assert {type: "json"}
@@ -259,7 +261,7 @@ async function mint(
         .mintAssets({
             [toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n,
             [toUnit(token_policy, fromText('token') + fromText(id_text), 222)]: 1n,
-        }, Data.to(mint_id))
+        }, Data.to<Action>('Minting', ActionShape))
         .attachSpendingValidator(thread_val)
         .payToContract(thread_val_addr, 
                        { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatumShape)},
@@ -285,7 +287,6 @@ async function mintCustom(
     assets: Assets,
     ref_asset: Assets,
     dtm: ThreadDatum,
-    mint_id: bigint
 ) {
     lucid.selectWalletFromPrivateKey(user_key);
 
@@ -298,7 +299,7 @@ async function mintCustom(
         .newTx()
         .collectFrom([utxo, thread], Data.void())
         .attachMintingPolicy(policy)
-        .mintAssets(assets, Data.to(mint_id))
+        .mintAssets(assets, Data.to<Action>('Minting', ActionShape))
         .attachSpendingValidator(thread_val)
         .payToContract(thread_val_addr, 
                        { inline: Data.to<ThreadDatum>(dtm, ThreadDatumShape)},
@@ -357,6 +358,25 @@ function left_pad(size: number, s: string): string {
         out = '0' + out
     } 
     return out
+}
+
+async function burn(
+    lucid: Lucid,
+    user_key: PrivateKey,
+    asset: Assets,
+    token_policy: MintingPolicy
+) {
+    lucid.selectWalletFromPrivateKey(user_key)    
+
+    const tx = await lucid
+        .newTx()
+        .attachMintingPolicy(token_policy)
+        .mintAssets(asset, Data.to<Action>('Burning', ActionShape))
+        .complete()
+    const txSigned = await tx.sign().complete()
+    const txHash = await txSigned.submit()
+
+    return txHash
 }
 
 async function setup() {
@@ -443,9 +463,92 @@ async function setup() {
     }
 }
 
+async function setupForBurn(
+    THREAD_COUNT: number,
+    MAX_SUPPLY: number,
+    OWNERSHIP_NAME: string,
+    TOKEN_NAME: string,
+) {
 
-// ------------------------------------------------------------------------
+    const user1 = generatePrivateKey();
+    const address1 = await lucidLib.selectWalletFromPrivateKey(user1).wallet.address();
+    console.log('address1', address1)
+    
+    const user2 = generatePrivateKey();
+    const address2 = await lucidLib.selectWalletFromPrivateKey(user2).wallet.address();
+    console.log('address2', address2)
+
+    const emulator = new Emulator([
+        { address: address1, assets: { lovelace: 100000000n }},
+        { address: address2, assets: { lovelace: 100000000n }}
+    ]);
+    const lucid = await Lucid.new(emulator);
+
+    const [addr1_utxo] = await lucid.utxosAt(address1)
+
+    const thread_policy = getThreadPolicy(addr1_utxo)
+    const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy);
+    console.log('thread policy: ', thread_policy_id)
+
+    const ownership_policy = getOwnershipPolicy(addr1_utxo)
+    const ownership_policy_id = lucidLib.utils.mintingPolicyToId(ownership_policy);
+
+    const meta_info = {
+        ownership_policy: ownership_policy_id,
+        ownership_name: fromText(OWNERSHIP_NAME)
+    }
+
+    console.log('ownership policy: ', thread_policy_id)
+    const meta_val = getMetaVal(meta_info)
+    const meta_val_hash = lucidLib.utils.validatorToScriptHash(meta_val)
+
+    const token_policy_info: TokenPolicyInfo = {
+        thread_policy: thread_policy_id, 
+        token_prefix: fromText(TOKEN_NAME),
+        max_supply: BigInt(MAX_SUPPLY),
+        thread_count: BigInt(THREAD_COUNT),
+        meta_val: meta_val_hash
+    }
+    const token_policy = getTokenPolicy(token_policy_info)
+    const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
+    console.log('token policy: ', token_policy_id)
+    
+    const thread_val_info: ThreadValidatorInfo = {
+        token_policy: token_policy_id,
+        thread_policy: thread_policy_id,
+    } 
+    const thread_validator = getThreadValidator(thread_val_info)
+    const thread_validator_address = lucidLib.utils.validatorToAddress(thread_validator)
+    console.log('thread validator: ', thread_validator_address)
+
+    console.log('start state address1: ', await lucid.utxosAt(address1))
+    console.log('start state address2: ', await lucid.utxosAt(address2))
+
+    return {
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        OWNERSHIP_NAME,
+        TOKEN_NAME,
+        lucid,
+        address1,
+        user1,
+        address2,
+        user2,
+        addr1_utxo,
+        thread_policy,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        token_policy_id,
+        emulator,
+        meta_val,
+        ownership_policy,
+        ownership_policy_id,
+    }
+}
+
 // testing
+// ------------------------------------------------------------------------
 //
 
 async function mintOne() {
@@ -756,7 +859,6 @@ async function mintWrongLabels() {
         assets,
         ref_asset,
         new_dtm,
-        mint_id
     )
     console.log('minted: ', mintTx)
 
@@ -768,6 +870,96 @@ async function mintWrongLabels() {
 
 }
 
+async function tryBurn(
+    THREAD_COUNT: number,
+    MAX_SUPPLY: number,
+    OWNERSHIP_NAME: string,
+    TOKEN_NAME: string,
+    ITER: number
+) {
+    
+    const {
+        lucid,
+        user1,
+        user2,
+        addr1_utxo,
+        thread_policy,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        token_policy_id,
+        emulator,
+        meta_val,
+        address1,
+        address2,
+        ownership_policy,
+    } = await setupForBurn(
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        OWNERSHIP_NAME,
+        TOKEN_NAME
+    )
+
+    // ------------------------------------------
+    // transactions 
+     
+    const deployTx = await deployWithOwnership(
+        lucid,
+        user1,
+        addr1_utxo,
+        thread_policy,
+        THREAD_COUNT,
+        ownership_policy,
+        OWNERSHIP_NAME,
+        thread_validator_address,
+    )
+    console.log('deployed: ', deployTx);
+
+    emulator.awaitBlock(5);
+
+    const thread = (await lucid.utxosAt(thread_validator_address))[0];
+    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatumShape)
+    const mint_id = dtm.mint_count + 1n
+    const new_dtm = { ...dtm, mint_count: mint_id }
+
+    const {txHash: mintTx} = await mintCustom(
+        lucid,
+        user2,
+        thread,
+        token_policy,
+        thread_validator,
+        thread_policy,
+        lucidLib.utils.validatorToAddress(meta_val),
+        { 
+            [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 222)]: 1n,
+            [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 100)]: 1n,
+        },
+        { [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 100)]: 1n },
+        new_dtm,
+    )
+    console.log('minted: ', mintTx)
+
+    emulator.awaitBlock(5)
+
+    console.log('address1: ', await lucid.utxosAt(address1))
+    console.log('address2: ', await lucid.utxosAt(address2))
+    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
+
+    const burnHash = await burn(
+        lucid,
+        user2,
+        {[toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 222)]: -1n},
+        token_policy
+    )
+    console.log('burnt: ', burnHash)
+
+    emulator.awaitBlock(5)
+
+    console.log('address1: ', await lucid.utxosAt(address1))
+    console.log('address2: ', await lucid.utxosAt(address2))
+    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
+
+}
 
 // -----------------------------------------------------------------------------
 // wrappers
@@ -799,6 +991,13 @@ function main() {
      Deno.test('mint too many', () => testFails(mintTooMany))
      Deno.test('update metadata', () => testSuceeds(tryUpdate))
      Deno.test('mint with wrong label', () => testFails(mintWrongLabels))
+     Deno.test('burn', () => testSuceeds(() => tryBurn(
+         1,
+         10,
+         'ownership',
+         'token',
+         1
+     )))
     
      Deno.test('leftpad1', () => { if(left_pad(2, '1') != '01') throw new Error('wrong') } )
      Deno.test('leftpad1', () => { if(left_pad(2, '10') != '10') throw new Error('wrong') } )
