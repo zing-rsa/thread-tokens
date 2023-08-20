@@ -62,3 +62,9 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - must spend this token to spend a metadata/ref utxo
 
     
+todos: 
+    - add metadata check to token_policy
+        - checks ref has valid meta
+    - value paid to owner?
+        - check that ada is transfered in exchange for nft
+
