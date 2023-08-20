@@ -15,20 +15,14 @@ import {
     toUnit
 } from 'lucid'
 import {
-    ThreadValidatorParamsShape,
     ThreadValidatorParams,
-    ThreadPolicyParamsShape,
     ThreadPolicyParams,
-    MetaPolicyParamsShape,
     MetaPolicyParams,
-    TokenPolicyParamsShape,
     TokenPolicyParams,
     MetaPolicyInfo,
     ThreadValidatorInfo,
-    ThreadDatumShape,
     ThreadDatum,
     TokenPolicyInfo,
-    ActionShape,
     Action,
     OutRef,
 } from './types_cipsixeightmulti.ts'
@@ -59,9 +53,10 @@ function getThreadPolicy(utxo: UTxO): MintingPolicy {
         "script": applyParamsToScript<ThreadPolicyParams>(
             threadPolicyCode.compiledCode,
             [plutus_out_ref],
-            ThreadPolicyParamsShape
+            ThreadPolicyParams
         )
     }
+
 }
 
 function getThreadValidator(info: ThreadValidatorInfo): SpendingValidator {
@@ -73,7 +68,7 @@ function getThreadValidator(info: ThreadValidatorInfo): SpendingValidator {
         "script": applyParamsToScript<ThreadValidatorParams>(
             threadValidatorCode.compiledCode,
             [info],
-            ThreadValidatorParamsShape
+            ThreadValidatorParams
 
         )
     }
@@ -88,7 +83,7 @@ function getTokenPolicy(info: TokenPolicyInfo): MintingPolicy {
         "script": applyParamsToScript<TokenPolicyParams>(
             tokenPolicyCode.compiledCode,
             [info],
-            TokenPolicyParamsShape
+            TokenPolicyParams
         )
     }
 }
@@ -102,7 +97,7 @@ function getMetaVal(info: MetaPolicyInfo): SpendingValidator {
         "script": applyParamsToScript<MetaPolicyParams>(
             metaVal.compiledCode,
             [info],
-            MetaPolicyParamsShape
+            MetaPolicyParams
         )
 
     }
@@ -122,7 +117,7 @@ function getOwnershipPolicy(utxo: UTxO): MintingPolicy {
         "script": applyParamsToScript<ThreadPolicyParams>(
             ownershipCode.compiledCode,
             [plutus_out_ref],
-            ThreadPolicyParamsShape
+            ThreadPolicyParams
         )
     }
 }
@@ -159,7 +154,7 @@ async function deploy(lucid:
                 inline: Data.to<ThreadDatum>({
                     mint_count: 0n,
                     idx: BigInt(i)
-                }, ThreadDatumShape)
+                }, ThreadDatum)
             }, 
             thread_asset) 
     }
@@ -208,7 +203,7 @@ async function deployWithOwnership(
                 inline: Data.to<ThreadDatum>({
                     mint_count: 0n,
                     idx: BigInt(i)
-                }, ThreadDatumShape)
+                }, ThreadDatum)
             }, 
             {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
     }
@@ -239,7 +234,7 @@ async function mint(
 
     const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
 
-    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatumShape) 
+    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
 
     console.log('minting from thread with datum: ', locked_thread_dtm)
 
@@ -261,10 +256,10 @@ async function mint(
         .mintAssets({
             [toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n,
             [toUnit(token_policy, fromText('token') + fromText(id_text), 222)]: 1n,
-        }, Data.to<Action>('Minting', ActionShape))
+        }, Data.to<Action>('Minting', Action))
         .attachSpendingValidator(thread_val)
         .payToContract(thread_val_addr, 
-                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatumShape)},
+                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
                        {[toUnit(thread_policy, fromText("thread"))] : 1n } )
         .payToContract(meta_addr, 
                        { inline: Data.to<string>(fromText('some metadata'))},
@@ -299,10 +294,10 @@ async function mintCustom(
         .newTx()
         .collectFrom([utxo, thread], Data.void())
         .attachMintingPolicy(policy)
-        .mintAssets(assets, Data.to<Action>('Minting', ActionShape))
+        .mintAssets(assets, Data.to<Action>('Minting', Action))
         .attachSpendingValidator(thread_val)
         .payToContract(thread_val_addr, 
-                       { inline: Data.to<ThreadDatum>(dtm, ThreadDatumShape)},
+                       { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)},
                        {[toUnit(thread_policy, fromText("thread"))] : 1n } )
         .payToContract(meta_addr, 
                        { inline: Data.to<string>(fromText('some metadata'))},
@@ -371,7 +366,7 @@ async function burn(
     const tx = await lucid
         .newTx()
         .attachMintingPolicy(token_policy)
-        .mintAssets(asset, Data.to<Action>('Burning', ActionShape))
+        .mintAssets(asset, Data.to<Action>('Burning', Action))
         .complete()
     const txSigned = await tx.sign().complete()
     const txHash = await txSigned.submit()
@@ -835,7 +830,7 @@ async function mintWrongLabels() {
     emulator.awaitBlock(5);
 
     const thread = (await lucid.utxosAt(thread_validator_address))[0];
-    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatumShape)
+    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum)
     const mint_id = dtm.mint_count + 1n
     const new_dtm = { ...dtm, mint_count: mint_id }
 
@@ -918,7 +913,7 @@ async function tryBurn(
     emulator.awaitBlock(5);
 
     const thread = (await lucid.utxosAt(thread_validator_address))[0];
-    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatumShape)
+    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum)
     const mint_id = dtm.mint_count + 1n
     const new_dtm = { ...dtm, mint_count: mint_id }
 
