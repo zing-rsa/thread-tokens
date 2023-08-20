@@ -27,9 +27,14 @@ This is a collection of scripts which faciliate capped and immutable token minti
 1. token minting contract
     - contains governing logic for tokens
     - checks:
-        - a thread token was consumed
-        - the minted token has metadata that matches the current state of the thread token
-        - the minted token does not exceed the max supply
+        if minting: 
+             - a thread token was consumed
+             - the minted tokens have metadata that matches the current state of the thread token
+             - the minted tokens do not exceed the max supply
+             - both a ref and user token are minted(cip68)
+             - ref token is sent to control address
+        if burning: 
+            - the count of mint is < 0
 2. thread token minting contract
     - this will only mint the thread token
     - checks: 
