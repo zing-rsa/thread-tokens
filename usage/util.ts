@@ -7,7 +7,7 @@ import {
     MetaPolicyInfo,
     ThreadValidatorInfo,
     TokenPolicyInfo,
-    DeployFlags,
+    UpdateFlags,
     MintFlags,
     OutRef,
 } from './types.ts'
@@ -139,6 +139,23 @@ export function getMintFlags(): MintFlags {
     return {
        pname: args.pname, 
        count: parseInt(args.count),
+       debug: args.debug
+    }
+}
+
+export function getUpdateFlags(): UpdateFlags {
+    const args = parse(Deno.args, {
+        string: ["pname", "tnid"],
+        boolean: ["debug"],
+        default: {debug: true}
+    })
+
+    if (!args.pname || !args.count || !args.tnid)
+        throw new Error('Missing args')
+
+    return {
+       pname: args.pname, 
+       tnid: parseInt(args.tnid),
        debug: args.debug
     }
 }

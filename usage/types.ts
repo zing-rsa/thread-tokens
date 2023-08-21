@@ -74,6 +74,12 @@ export const ActionShape = Data.Enum([
 export type Action = Data.Static<typeof ActionShape>
 export const Action = ActionShape as unknown as Action
 
+export const MetaDataShape = Data.Object({
+    myField: Data.Bytes()
+})
+export type MetaData = Data.Static<typeof MetaDataShape>
+export const MetaData = MetaDataShape as unknown as MetaData
+
 export type DeployFlags = {
     pname: string,
     tname: string,
@@ -88,3 +94,12 @@ export type MintFlags = {
     count: number
     debug: boolean
 }
+
+export type UpdateFlags = {
+    pname: string,
+    tnid: number,
+    debug: boolean
+}
+
+
+
