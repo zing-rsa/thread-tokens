@@ -3,8 +3,9 @@
         "lucid": "https://deno.land/x/lucid@0.9.8/mod.ts"
     }, 
     "tasks": {
-        "deploy": "deno run -A deploy.ts --pname=test --tname=token --oname=ownership --threads=2 --sup=10" 
-        "mint": "deno run -A mint.ts --pname=test --count=1 --debug" 
+        "deploy": "deno run -A deploy.ts --pname=test --tname=token --oname=ownership --threads=2 --sup=10 --debug" 
+        "mint": "deno run -A mint.ts --pname=test --count=1 --debug",
+        "update": "deno run -A update.ts --pname=test --tnid=1 --debug" 
     }
     
 }

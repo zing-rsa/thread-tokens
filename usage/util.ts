@@ -7,6 +7,7 @@ import {
     MetaPolicyInfo,
     ThreadValidatorInfo,
     TokenPolicyInfo,
+    DeployFlags,
     UpdateFlags,
     MintFlags,
     OutRef,
@@ -106,9 +107,9 @@ export function getOwnershipPolicy(utxo: UTxO): MintingPolicy {
     }
 }
 
-export function getFlags(): DeployFlags {
+export function getDeployFlags(): DeployFlags {
     const args = parse(Deno.args, {
-        string: ["pname", "tname", "oname", "sup", "threads" ],
+        string: ["pname", "tname", "oname", "sup", "threads"],
         boolean: ["debug"],
         default: {debug: true}
     })
@@ -150,7 +151,7 @@ export function getUpdateFlags(): UpdateFlags {
         default: {debug: true}
     })
 
-    if (!args.pname || !args.count || !args.tnid)
+    if (!args.pname || !args.tnid)
         throw new Error('Missing args')
 
     return {

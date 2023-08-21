@@ -1,14 +1,14 @@
 import { ensureFile } from 'https://deno.land/std/fs/mod.ts'
 import {
     MintingPolicy,
-    PrivateKey,
     Emulator,
     Address,
     Lucid,
     Data,
-    generatePrivateKey,
     fromText,
-    toUnit
+    toUnit,
+    generateSeedPhrase,
+Blockfrost
 } from 'lucid'
 import {
     ThreadValidatorInfo,
@@ -19,16 +19,17 @@ import {
     getThreadValidator,
     getOwnershipPolicy,
     getThreadPolicy,
+    getDeployFlags,
     getTokenPolicy,
     getMetaVal,
-    getFlags,
 } from './util.ts'
+import keys from './keyfile.json' assert {type: 'json'}
 
 const lucidLib = await Lucid.new(undefined, "Custom");
 
 async function deployWithOwnership(
     lucid:Lucid,
-    user_key:PrivateKey,
+    user_key:string,
     utxo_txhash: string,
     utxo_idx: number,
     thread_policy:MintingPolicy,
@@ -37,7 +38,7 @@ async function deployWithOwnership(
     ownership_name: string,
     thread_val_addr:Address,
 ) {
-    lucid.selectWalletFromPrivateKey(user_key);
+    lucid.selectWalletFromSeed(user_key);
 
     const ownership_policy_id = lucidLib.utils.mintingPolicyToId(ownership_policy)
     const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy)
@@ -78,15 +79,34 @@ async function deployWithOwnership(
     return txHash;
 }
 
-async function setupChain() {
-    const user1 = generatePrivateKey();
-    const address1 = await lucidLib.selectWalletFromPrivateKey(user1).wallet.address();
-    console.log('address1', address1)
-    
-    const emulator = new Emulator([
-        { address: address1, assets: { lovelace: 100_000_000n }},
-    ]);
-    const lucid = await Lucid.new(emulator);
+async function setupChain(
+    debug: boolean
+) {
+    let lucid; 
+    let address1;
+    let user1;
+    let emulator;
+
+    if (debug) {
+        user1 = generateSeedPhrase();
+        address1 = await lucidLib.selectWalletFromSeed(user1).wallet.address();
+        
+        emulator = new Emulator([
+            { address: address1, assets: { lovelace: 100_000_000n }},
+        ]);
+        lucid = await Lucid.new(emulator);
+    } else {
+        user1 = keys.seed;
+        address1 = await lucidLib.selectWalletFromSeed(user1).wallet.address();
+        
+        lucid = await Lucid.new(
+            new Blockfrost(
+                "https://cardano-preprod.blockfrost.io/api/v0",
+                keys.blockfrostKey
+            ), 
+            "Preprod"
+        );
+    }
 
     return {lucid, user1, address1, emulator}
 }
@@ -97,9 +117,9 @@ async function setupContracts(
     OWNERSHIP_NAME: string,
     TOKEN_NAME: string,
     lucid: Lucid,
-    user_key: PrivateKey
+    user_key: string,
 ) {
-    lucid.selectWalletFromPrivateKey(user_key)
+    lucid.selectWalletFromSeed(user_key)
 
     const addr1_utxo = (await lucid.wallet.getUtxos()).find((o) => o.assets['lovelace'] > 10_000_000)
 
@@ -149,10 +169,10 @@ async function setupContracts(
 }
 
 async function main() {
-    const flags = getFlags() 
+    const flags = getDeployFlags() 
     const path = `./${flags.pname}.json`
 
-    const {lucid, user1, emulator} = await setupChain();
+    const {lucid, user1, emulator} = await setupChain(flags.debug);
 
     const deployDetails = await setupContracts(
       flags.threads,
@@ -160,7 +180,7 @@ async function main() {
       flags.oname,
       flags.tname,
       lucid,
-      user1
+      user1,
     ) 
 
     await ensureFile(path)

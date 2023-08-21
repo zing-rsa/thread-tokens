@@ -2,17 +2,16 @@ import { ensureFile } from 'https://deno.land/std/fs/mod.ts'
 import {
     SpendingValidator,
     MintingPolicy,
-    PrivateKey,
     Emulator,
     Assets,
     Lucid,
     Data,
     UTxO,
-    generatePrivateKey,
+    generateSeedPhrase,
     fromText,
     toUnit,
     Address,
-Unit
+    Unit
 } from '../../../repos/lucid/mod.ts'
 import {
     ThreadDatum,
@@ -21,6 +20,8 @@ import {
 import {
     getMintFlags,
 } from './util.ts'
+import keys from './keyfile.json' assert {type: 'json'}
+import { Blockfrost } from 'lucid'
 
 const lucidLib = await Lucid.new(undefined, "Custom");
 
@@ -37,8 +38,8 @@ async function setupChain(
     let emulator;
 
     if (debug) {
-        user1 = generatePrivateKey();
-        address1 = await lucidLib.selectWalletFromPrivateKey(user1).wallet.address();
+        user1 = generateSeedPhrase();
+        address1 = await lucidLib.selectWalletFromSeed(user1).wallet.address();
         
         emulator = new Emulator([
             { 
@@ -50,12 +51,13 @@ async function setupChain(
         ]);
         lucid = await Lucid.new(emulator);
     } else {
-        // need to change this to use a keyfile.json and preprod lucid
-        user1 = generatePrivateKey();
-        address1 = await lucidLib.selectWalletFromPrivateKey(user1).wallet.address();
+        user1 = keys.seed;
+        address1 = await lucidLib.selectWalletFromSeed(user1).wallet.address();
         
-        lucid = await Lucid.new(undefined, "Custom");
-        throw new Error('not setup for preprod')
+        lucid = await Lucid.new(new Blockfrost(
+            "https://cardano-preprod.blockfrost.io/api/v0",
+            keys.blockfrostKey
+        ), "Preprod");
     }
 
     return {lucid, user1, address1, emulator}
@@ -63,7 +65,7 @@ async function setupChain(
 
 async function mint(
     lucid:Lucid,
-    user_key:PrivateKey,
+    user_key:string,
     thread:UTxO,
     policy:MintingPolicy,
     thread_val: SpendingValidator,
@@ -73,12 +75,13 @@ async function mint(
     ref_asset: Assets,
     dtm: ThreadDatum,
 ) {
-    lucid.selectWalletFromPrivateKey(user_key);
+    lucid.selectWalletFromSeed(user_key);
 
     const thread_policy = lucidLib.utils.mintingPolicyToId(thread_mintpolicy)
     const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
 
-    const [utxo] = await lucid.wallet.getUtxos()
+    const utxo = (await lucid.wallet.getUtxos()).find(o => o.assets['lovelace'] > 10_000_000)
+    if (!utxo) throw new Error('couldnt find suitable utxo at minter address')
 
     const tx = await lucid
         .newTx()
@@ -96,7 +99,7 @@ async function mint(
     const txSigned = await tx.sign().complete()
     const txHash = await txSigned.submit() 
 
-    return {txHash};
+    return txHash;
 }
 
 function left_pad(size: number, s: string): string {
@@ -135,7 +138,7 @@ async function main() {
 
     const tname = projectDetails.tname + left_pad(2, (existing_dtm.mint_count+1n).toString())
 
-    await mint(
+    const txHash = await mint(
         lucid,
         user1,
         utxo,
@@ -162,6 +165,8 @@ async function main() {
         console.log('meta: ', await lucid.utxosAt(
             lucidLib.utils.validatorToAddress(projectDetails.meta_val))
         )
+    } else {
+        console.log('minted: ', txHash)
     }
 }
 
