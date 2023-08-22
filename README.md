@@ -61,6 +61,10 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - meta control validator is parameterized by this token
     - must spend this token to spend a metadata/ref utxo
 
+## Issues:
+- could multiple thread tokens be included in the same utxo?
+    - how does this affect the datum?
+    - does them being fungible affect this?
     
 todos: 
     - add metadata check to token_policy
