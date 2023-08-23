@@ -61,10 +61,6 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - meta control validator is parameterized by this token
     - must spend this token to spend a metadata/ref utxo
 
-## Issues:
-- could multiple thread tokens be included in the same utxo?
-    - how does this affect the datum?
-    - does them being fungible affect this?
     
 todo: 
     - add metadata check to token_policy
@@ -73,6 +69,15 @@ todo:
         - check that ada is transfered in exchange for nft
 
 ## Issues
-    - could you say you are minting but instead burn? 
+    - SOLVED: could you say you are minting but instead burn? 
+        - no, the policy checks that the value of ref and user is 1 each 
     - SOLVED: could 2 thread tokens end up in the same utxo?
-        - this is preventable if the 
+        - adapted thread token to enforce only a single utxo and token can be consumed 
+    - SOLVED: consume a thread by burning a token?
+        - made sure in thread that token mint is positive(== 1)
+    - Currently the script is setup with the goal of allowing minting transactions from the frontend
+        - this might need to be re-thought slightly because the metadata utxo must not be minted by the frontend
+        - 2 solutions: 
+            - mint the ref utxo at another stage
+            - manage minting completely on the backend
+
