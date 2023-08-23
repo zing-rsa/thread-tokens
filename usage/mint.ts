@@ -136,7 +136,7 @@ async function main() {
         idx: existing_dtm.idx
     }
 
-    const tname = projectDetails.tname + left_pad(2, (existing_dtm.mint_count+1n).toString())
+    const tname = projectDetails.tname + left_pad(projectDetails.leftpad, (existing_dtm.mint_count+1n).toString())
 
     const txHash = await mint(
         lucid,

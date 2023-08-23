@@ -18,7 +18,7 @@ pub fn int_to_bytearray(n: Int) -> ByteArray {
 }
 
 pub fn left_pad(size: Int, bytes: ByteArray) {
-  if builtin.length_of_bytearray(bytes) == size {
+  if builtin.length_of_bytearray(bytes) >= size {
     bytes
   } else {
     left_pad(size, builtin.append_bytearray(#"30", bytes))
@@ -56,4 +56,8 @@ test padfour() {
 
 test padten() {
   builtin.encode_utf8(@"0000000001") == left_pad(10, builtin.encode_utf8(@"1"))
+}
+
+test padTooLittle() {
+  builtin.encode_utf8(@"120") == left_pad(2, builtin.encode_utf8(@"120"))
 }

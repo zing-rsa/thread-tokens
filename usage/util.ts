@@ -109,17 +109,18 @@ export function getOwnershipPolicy(utxo: UTxO): MintingPolicy {
 
 export function getDeployFlags(): DeployFlags {
     const args = parse(Deno.args, {
-        string: ["pname", "tname", "oname", "sup", "threads"],
+        string: ["pname", "tname", "oname", "sup", "threads", "leftpad"],
         boolean: ["debug"],
         default: {debug: true}
     })
 
-    if (!args.pname || !args.tname || !args.sup || !args.oname || !args.threads)
+    if (!args.pname || !args.tname || !args.sup || !args.oname || !args.threads || !args.leftpad)
         throw new Error('Missing args')
 
     return {
         pname: args.pname,
         tname: args.tname,
+        leftpad: parseInt(args.leftpad),
         oname: args.oname,
         sup: parseInt(args.sup), 
         threads: parseInt(args.threads),

@@ -116,6 +116,7 @@ async function setupContracts(
     MAX_SUPPLY: number,
     OWNERSHIP_NAME: string,
     TOKEN_NAME: string,
+    ID_LEFTPAD: number,
     lucid: Lucid,
     user_key: string,
 ) {
@@ -144,6 +145,7 @@ async function setupContracts(
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id, 
         token_prefix: fromText(TOKEN_NAME),
+        token_id_leftpad: BigInt(ID_LEFTPAD),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
         meta_val: meta_val_hash
@@ -165,6 +167,7 @@ async function setupContracts(
         ownership_policy,
         utxo_txhash: addr1_utxo.txHash,
         utxo_idx: addr1_utxo.outputIndex,
+        leftpad: ID_LEFTPAD
     }
 }
 
@@ -179,6 +182,7 @@ async function main() {
       flags.sup,
       flags.oname,
       flags.tname,
+      flags.leftpad,
       lucid,
       user1,
     ) 

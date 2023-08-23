@@ -20,6 +20,7 @@ pub type ThreadValidatorInfo {
 pub type TokenPolicyInfo {
   thread_policy: PolicyId,
   token_prefix: ByteArray,
+  token_id_leftpad: Int,
   max_supply: Int,
   thread_count: Int,
   meta_val: ValidatorHash,

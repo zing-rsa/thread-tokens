@@ -416,6 +416,7 @@ async function setup() {
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id, 
         token_prefix: fromText(TOKEN_NAME),
+        token_id_leftpad: BigInt(2),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
         meta_val: meta_val_hash
@@ -500,6 +501,7 @@ async function setupForBurn(
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id, 
         token_prefix: fromText(TOKEN_NAME),
+        token_id_leftpad: BigInt(2),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
         meta_val: meta_val_hash

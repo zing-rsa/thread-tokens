@@ -41,6 +41,7 @@ export const ThreadDatum = ThreadDatumShape as unknown as ThreadDatum
 export const TokenPolicyInfoShape = Data.Object({
   thread_policy: Data.Bytes(),
   token_prefix: Data.Bytes(),
+  token_id_leftpad: Data.Integer(),
   max_supply: Data.Integer(),
   thread_count: Data.Integer(),
   meta_val: Data.Bytes()

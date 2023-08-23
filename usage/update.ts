@@ -114,7 +114,7 @@ async function main() {
     const ownership_policy_id = lucidLib.utils.mintingPolicyToId(projectDetails.ownership_policy)
     const meta_addr = lucidLib.utils.validatorToAddress(projectDetails.meta_val)
 
-    const ref_unit = toUnit(token_policy_id, fromText(projectDetails.tname + left_pad(2, flags.tnid.toString())), 100) 
+    const ref_unit = toUnit(token_policy_id, fromText(projectDetails.tname + left_pad(projectDetails.leftpad, flags.tnid.toString())), 100) 
     const own_unit = toUnit(ownership_policy_id, fromText(projectDetails.oname))
 
     const {lucid, user1, address1, emulator} = await setupChain(
