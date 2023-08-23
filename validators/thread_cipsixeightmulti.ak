@@ -26,20 +26,31 @@ validator(info: ThreadValidatorInfo) {
     expect Some(own_input) = find_input(ctx.transaction.inputs, out_ref)
     expect ScriptCredential(own_hash) =
       own_input.output.address.payment_credential
+
     expect [own_out] = find_script_outputs(ctx.transaction.outputs, own_hash)
+    expect [own_in] =
+      list.filter(
+        ctx.transaction.inputs,
+        fn(i) {
+          i.output.address.payment_credential == ScriptCredential(own_hash)
+        },
+      )
 
     expect InlineDatum(dtm_data) = own_out.datum
     expect out_dtm: ThreadDatum = dtm_data
 
     let mint = from_minted_value(ctx.transaction.mint)
 
-    let returns_thread =
+    let consumes_one_thread =
+      quantity_of(own_in.output.value, info.thread_policy, "thread") == 1
+
+    let returns_one_thread =
       quantity_of(own_out.value, info.thread_policy, "thread") == 1
 
     let mints_tokens = list.has(policies(mint), info.token_policy)
 
     let increments_count = out_dtm.mint_count == dtm.mint_count + 1
 
-    mints_tokens && returns_thread && increments_count
+    mints_tokens && consumes_one_thread && returns_one_thread && increments_count
   }
 }

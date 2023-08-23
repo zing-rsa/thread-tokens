@@ -66,9 +66,13 @@ This is a collection of scripts which faciliate capped and immutable token minti
     - how does this affect the datum?
     - does them being fungible affect this?
     
-todos: 
+todo: 
     - add metadata check to token_policy
         - checks ref has valid meta
     - value paid to owner?
         - check that ada is transfered in exchange for nft
 
+## Issues
+    - could you say you are minting but instead burn? 
+    - SOLVED: could 2 thread tokens end up in the same utxo?
+        - this is preventable if the 

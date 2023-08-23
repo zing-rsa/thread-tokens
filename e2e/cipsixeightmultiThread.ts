@@ -592,6 +592,7 @@ async function mintOne() {
         THREAD_COUNT,
         lucidLib.utils.validatorToAddress(meta_val)
     )
+     
     console.log('minted: ', mintTx)
 
     emulator.awaitBlock(5)
@@ -956,6 +957,93 @@ async function tryBurn(
 
 }
 
+async function tryTwoThreads() {
+    const {
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        lucid,
+        user1,
+        addr1_utxo,
+        thread_policy,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        emulator,
+        meta_val,
+        address2,
+        user2,
+        address1
+    } = await setup()
+
+    // ------------------------------------------
+    // transactions 
+     
+    const deployTx = await deploy(
+        lucid,
+        user1,
+        thread_policy,
+        thread_validator_address,
+        addr1_utxo,
+        THREAD_COUNT
+    )
+    console.log('deployed: ', deployTx);
+
+    emulator.awaitBlock(5);
+
+    const threadA = (await lucid.utxosAt(thread_validator_address))[0];
+    const threadB = (await lucid.utxosAt(thread_validator_address))[1];
+    
+    lucid.selectWalletFromPrivateKey(user2);
+
+    const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy);
+    const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy)
+    const thread_val_addr = lucidLib.utils.validatorToAddress(thread_validator)
+    const meta_val_addr = lucidLib.utils.validatorToAddress(meta_val)
+
+    const locked_thread_dtm = Data.from<ThreadDatum>(threadA.datum!, ThreadDatum) 
+
+    console.log('minting from thread with datum: ', locked_thread_dtm)
+
+    const new_dtm: ThreadDatum = {
+        mint_count: locked_thread_dtm.mint_count + 1n,
+        idx: locked_thread_dtm.idx
+    }
+
+    const mint_id = ((BigInt(MAX_SUPPLY) / BigInt(THREAD_COUNT)) * new_dtm.idx) + new_dtm.mint_count
+    const id_text = left_pad(2, mint_id.toString())
+
+    const [utxo] = await lucid.wallet.getUtxos()
+
+    const tx = await lucid
+        .newTx()
+        .collectFrom([utxo, threadA, threadB], Data.void())
+        .attachMintingPolicy(token_policy)
+        .mintAssets({
+            [toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n,
+            [toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n,
+        }, Data.to<Action>('Minting', Action))
+        .attachSpendingValidator(thread_validator)
+        .payToContract(thread_val_addr, 
+                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
+                       {[toUnit(thread_policy_id, fromText("thread"))] : 1n } )
+        .payToContract(meta_val_addr, 
+                       { inline: Data.to<string>(fromText('some metadata'))},
+                       {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n})
+        .complete()
+    const txSigned = await tx.sign().complete()
+    const txHash = await txSigned.submit() 
+
+    console.log('minted: ', txHash)
+
+    emulator.awaitBlock(5)
+
+
+    console.log('address1: ', await lucid.utxosAt(address1))
+    console.log('address2: ', await lucid.utxosAt(address2))
+    console.log('thread_val:', await lucid.utxosAt(thread_validator_address))
+    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
+}
+
 // -----------------------------------------------------------------------------
 // wrappers
 
@@ -987,12 +1075,13 @@ function main() {
      Deno.test('update metadata', () => testSuceeds(tryUpdate))
      Deno.test('mint with wrong label', () => testFails(mintWrongLabels))
      Deno.test('burn', () => testSuceeds(() => tryBurn(
-         1,
-         10,
-         'ownership',
-         'token',
-         1
+       1,
+       10,
+       'ownership',
+       'token',
+       1
      )))
+     Deno.test('try spent 2 threads', () => testFails(() => tryTwoThreads()))
     
      Deno.test('leftpad1', () => { if(left_pad(2, '1') != '01') throw new Error('wrong') } )
      Deno.test('leftpad1', () => { if(left_pad(2, '10') != '10') throw new Error('wrong') } )
