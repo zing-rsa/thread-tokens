@@ -53,7 +53,10 @@ validator(info: TokenPolicyInfo) {
           thread_dtm.mint_count < info.max_supply / info.thread_count
 
         let token_name =
-          append_bytearray(info.token_prefix, left_pad(info.token_id_leftpad, int_to_bytearray(id)))
+          append_bytearray(
+            info.token_prefix,
+            left_pad(info.token_id_leftpad, int_to_bytearray(id)),
+          )
 
         let ref_name_correct =
           ref_name == concat(constants.label100, token_name)
