@@ -25,6 +25,7 @@ import {
     TokenPolicyInfo,
     Action,
     OutRef,
+ThreadDatumShape,
 } from './types_cipsixeightmulti.ts'
 import plutus from '../plutus.json' assert {type: "json"}
 
@@ -125,255 +126,6 @@ function getOwnershipPolicy(utxo: UTxO): MintingPolicy {
 // ----------------------------------------------------------------------
 // helper functions
 
-async function deploy(lucid:
-    Lucid,
-    userKey:PrivateKey,
-    policy:MintingPolicy,
-    valAddr:Address,
-    utxo:UTxO,
-    thread_count:number
-) {
-    lucid.selectWalletFromPrivateKey(userKey);
-
-    const thread_token: Unit = lucidLib.utils.mintingPolicyToId(policy) + fromText("thread") 
-    const thread_asset = { [thread_token] : 1n }
-    const thread_assets = { [thread_token] : BigInt(thread_count)}
-
-    console.log('mint thread using: ', `${utxo.txHash}#${utxo.outputIndex}`)
-
-    const txBuilder = lucid
-        .newTx()
-        .collectFrom([utxo], Data.void())
-        .mintAssets(thread_assets, Data.void())
-        .attachMintingPolicy(policy)
-
-    for (let i = 0; i < thread_count; i++){
-        txBuilder.payToContract(
-            valAddr, 
-            { 
-                inline: Data.to<ThreadDatum>({
-                    mint_count: 0n,
-                    idx: BigInt(i)
-                }, ThreadDatum)
-            }, 
-            thread_asset) 
-    }
-
-    const tx = await txBuilder.complete()
-
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit()
-
-    return txHash;
-}
-
-async function deployWithOwnership(
-    lucid:Lucid,
-    userKey:PrivateKey,
-    utxo:UTxO,
-    thread_policy:MintingPolicy,
-    thread_count:number,
-    ownership_policy: MintingPolicy,
-    ownership_name: string,
-    val_addr:Address,
-) {
-    lucid.selectWalletFromPrivateKey(userKey);
-
-    const ownership_policy_id = lucidLib.utils.mintingPolicyToId(ownership_policy)
-    const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy)
-
-    console.log('mint thread and ownership using: ', `${utxo.txHash}#${utxo.outputIndex}`)
-
-    const txBuilder = lucid
-        .newTx()
-        .collectFrom([utxo], Data.void())
-        .attachMintingPolicy(ownership_policy)
-        .mintAssets({
-            [toUnit(ownership_policy_id, fromText(ownership_name))]: 1n
-        }, Data.void())
-        .attachMintingPolicy(thread_policy)
-        .mintAssets({
-            [toUnit(thread_policy_id, fromText('thread'))] : BigInt(thread_count)
-        }, Data.void())
-
-    for (let i = 0; i < thread_count; i++){
-        txBuilder.payToContract(
-            val_addr, 
-            { 
-                inline: Data.to<ThreadDatum>({
-                    mint_count: 0n,
-                    idx: BigInt(i)
-                }, ThreadDatum)
-            }, 
-            {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
-    }
-
-    const tx = await txBuilder.complete()
-
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit()
-
-    return txHash;
-}
-
-async function mint(
-    lucid:Lucid,
-    user_key:PrivateKey,
-    thread:UTxO,
-    policy:MintingPolicy,
-    thread_val: SpendingValidator,
-    thread_mintpolicy: MintingPolicy,
-    max_supply: number,
-    thread_count: number,
-    meta_addr: string
-) {
-    lucid.selectWalletFromPrivateKey(user_key);
-
-    const token_policy = lucidLib.utils.mintingPolicyToId(policy);
-    const thread_policy = lucidLib.utils.mintingPolicyToId(thread_mintpolicy)
-
-    const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
-
-    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
-
-    console.log('minting from thread with datum: ', locked_thread_dtm)
-
-    const new_dtm: ThreadDatum = {
-        mint_count: locked_thread_dtm.mint_count + 1n,
-        idx: locked_thread_dtm.idx
-    }
-
-    const mint_id = ((BigInt(max_supply) / BigInt(thread_count)) * new_dtm.idx) + new_dtm.mint_count
-
-    const id_text = left_pad(2, mint_id.toString())
-
-    const [utxo] = await lucid.wallet.getUtxos()
-
-    const tx = await lucid
-        .newTx()
-        .collectFrom([utxo, thread], Data.void())
-        .attachMintingPolicy(policy)
-        .mintAssets({
-            [toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n,
-            [toUnit(token_policy, fromText('token') + fromText(id_text), 222)]: 1n,
-        }, Data.to<Action>('Minting', Action))
-        .attachSpendingValidator(thread_val)
-        .payToContract(thread_val_addr, 
-                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
-                       {[toUnit(thread_policy, fromText("thread"))] : 1n } )
-        .payToContract(meta_addr, 
-                       { inline: Data.to<string>(fromText('some metadata'))},
-                       {[toUnit(token_policy, fromText('token') + fromText(id_text), 100)]: 1n})
-        .complete()
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit() 
-
-    return {txHash, ref_unit: toUnit(token_policy, fromText('token') + fromText(id_text), 100)};
-}
-
-async function mintCustom(
-    lucid:Lucid,
-    user_key:PrivateKey,
-    thread:UTxO,
-    policy:MintingPolicy,
-    thread_val: SpendingValidator,
-    thread_mintpolicy: MintingPolicy,
-    meta_addr: string,
-    assets: Assets,
-    ref_asset: Assets,
-    dtm: ThreadDatum,
-) {
-    lucid.selectWalletFromPrivateKey(user_key);
-
-    const thread_policy = lucidLib.utils.mintingPolicyToId(thread_mintpolicy)
-    const thread_val_addr = lucidLib.utils.validatorToAddress(thread_val)
-
-    const [utxo] = await lucid.wallet.getUtxos()
-
-    const tx = await lucid
-        .newTx()
-        .collectFrom([utxo, thread], Data.void())
-        .attachMintingPolicy(policy)
-        .mintAssets(assets, Data.to<Action>('Minting', Action))
-        .attachSpendingValidator(thread_val)
-        .payToContract(thread_val_addr, 
-                       { inline: Data.to<ThreadDatum>(dtm, ThreadDatum)},
-                       {[toUnit(thread_policy, fromText("thread"))] : 1n } )
-        .payToContract(meta_addr, 
-                       { inline: Data.to<string>(fromText('some metadata'))},
-                       ref_asset)
-        .complete()
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit() 
-
-    return {txHash};
-}
-
-async function updateMetaData(
-    lucid:Lucid,
-    user_key:PrivateKey,
-    meta_val: SpendingValidator,
-    ownership_policy_id: string,
-    ownership_name: string,
-    ref_unit: Unit
-) {
-    lucid.selectWalletFromPrivateKey(user_key)
-
-    const meta_addr = lucidLib.utils.validatorToAddress(meta_val)
-
-    const ownership_utxo = (await lucid.wallet.getUtxos()).find(
-        (o) => o.assets[toUnit(ownership_policy_id, fromText(ownership_name))] == 1n)
-    if(!ownership_utxo) throw new Error("couldn't find ownership utxo")
-
-    const [ref_utxo] = (await lucid.utxosAt(meta_addr))
-    if(!ref_utxo) throw new Error("couldn't find ref utxo")
-
-    const new_dtm = fromText('somenewMetadata')
-
-    const tx = await lucid
-        .newTx()
-        .collectFrom([ownership_utxo, ref_utxo], Data.void())
-        .attachSpendingValidator(meta_val)
-        .payToContract(
-            meta_addr, 
-            { inline: Data.to<string>(new_dtm)},
-            { [ref_unit]: 1n }
-        )
-        .complete()
-
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit()
-
-    return txHash;
-}
-
-function left_pad(size: number, s: string): string {
-    let out = s; 
-    for (let i = 0; i < size - s.length; i++) {
-        out = '0' + out
-    } 
-    return out
-}
-
-async function burn(
-    lucid: Lucid,
-    user_key: PrivateKey,
-    asset: Assets,
-    token_policy: MintingPolicy
-) {
-    lucid.selectWalletFromPrivateKey(user_key)    
-
-    const tx = await lucid
-        .newTx()
-        .attachMintingPolicy(token_policy)
-        .mintAssets(asset, Data.to<Action>('Burning', Action))
-        .complete()
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit()
-
-    return txHash
-}
-
 async function setup() {
 
     const THREAD_COUNT = 2
@@ -412,6 +164,7 @@ async function setup() {
     console.log('ownership policy: ', thread_policy_id)
     const meta_val = getMetaVal(meta_info)
     const meta_val_hash = lucidLib.utils.validatorToScriptHash(meta_val)
+    const meta_val_address = lucidLib.utils.validatorToAddress(meta_val)
 
     const token_policy_info: TokenPolicyInfo = {
         thread_policy: thread_policy_id, 
@@ -419,7 +172,9 @@ async function setup() {
         token_id_leftpad: BigInt(2),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
-        meta_val: meta_val_hash
+        meta_val: meta_val_hash,
+        owner_policy: ownership_policy_id,
+        owner_name: fromText(OWNERSHIP_NAME)
     }
     const token_policy = getTokenPolicy(token_policy_info)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
@@ -448,12 +203,14 @@ async function setup() {
         user2,
         addr1_utxo,
         thread_policy,
+        thread_policy_id,
         thread_validator,
         thread_validator_address,
         token_policy,
         token_policy_id,
         emulator,
         meta_val,
+        meta_val_address,
         ownership_policy,
         ownership_policy_id,
     }
@@ -504,7 +261,9 @@ async function setupForBurn(
         token_id_leftpad: BigInt(2),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
-        meta_val: meta_val_hash
+        meta_val: meta_val_hash,
+        owner_policy: ownership_policy_id,
+        owner_name: fromText(OWNERSHIP_NAME)
     }
     const token_policy = getTokenPolicy(token_policy_info)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)
@@ -544,6 +303,14 @@ async function setupForBurn(
     }
 }
 
+function left_pad(size: number, s: string): string {
+    let out = s; 
+    for (let i = 0; i < size - s.length; i++) {
+        out = '0' + out
+    } 
+    return out
+}
+
 // testing
 // ------------------------------------------------------------------------
 //
@@ -553,184 +320,19 @@ async function mintOne() {
     const {
         THREAD_COUNT,
         MAX_SUPPLY,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-        meta_val,
-        address2
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    const thread = (await lucid.utxosAt(thread_validator_address))[0];
-    
-    const {txHash: mintTx} = await mint(
-        lucid,
-        user2,
-        thread,
-        token_policy,
-        thread_validator,
-        thread_policy,
-        MAX_SUPPLY,
-        THREAD_COUNT,
-        lucidLib.utils.validatorToAddress(meta_val)
-    )
-     
-    console.log('minted: ', mintTx)
-
-    emulator.awaitBlock(5)
-
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-}
-
-async function mintAll() {
-    
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-        meta_val,
-        address2
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    for (let i = 0; i < MAX_SUPPLY; i++){
-        const thread = (await lucid.utxosAt(thread_validator_address))[0];
-
-        const {txHash: mintTx} = await mint(
-            lucid,
-            user2,
-            thread,
-            token_policy,
-            thread_validator,
-            thread_policy,
-            MAX_SUPPLY,
-            THREAD_COUNT,
-            lucidLib.utils.validatorToAddress(meta_val)
-        )
-        console.log('minted: ', mintTx)
-
-        emulator.awaitBlock(5)
-    }
-
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-}
-
-async function mintTooMany() {
-    
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-        meta_val,
-        address2
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    for (let i = 0; i < MAX_SUPPLY + 1; i++){
-        const thread = (await lucid.utxosAt(thread_validator_address))[0];
-
-        const {txHash: mintTx} = await mint(
-            lucid,
-            user2,
-            thread,
-            token_policy,
-            thread_validator,
-            thread_policy,
-            MAX_SUPPLY,
-            THREAD_COUNT,
-            lucidLib.utils.validatorToAddress(meta_val)
-        )
-        console.log('minted: ', mintTx)
-
-        emulator.awaitBlock(5)
-    }
-
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-}
-
-async function tryUpdate() {
-    
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
         OWNERSHIP_NAME,
         lucid,
         user1,
-        user2,
         addr1_utxo,
         thread_policy,
+        thread_policy_id,
         thread_validator,
         thread_validator_address,
         token_policy,
+        token_policy_id,
         emulator,
         meta_val,
+        meta_val_address,
         address1,
         address2,
         ownership_policy,
@@ -740,272 +342,49 @@ async function tryUpdate() {
 
     // ------------------------------------------
     // transactions 
-     
-    const deployTx = await deployWithOwnership(
-        lucid,
-        user1,
-        addr1_utxo,
-        thread_policy,
-        THREAD_COUNT,
-        ownership_policy,
-        OWNERSHIP_NAME,
-        thread_validator_address,
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    const thread = (await lucid.utxosAt(thread_validator_address))[0];
-
-    const {txHash: mintTx, ref_unit} = await mint(
-        lucid,
-        user2,
-        thread,
-        token_policy,
-        thread_validator,
-        thread_policy,
-        MAX_SUPPLY,
-        THREAD_COUNT,
-        lucidLib.utils.validatorToAddress(meta_val)
-    )
-    console.log('minted: ', mintTx)
-
-    emulator.awaitBlock(5)
-
-    console.log('address1: ', await lucid.utxosAt(address1))
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-
-    const updateTx = await updateMetaData(
-        lucid, 
-        user1, 
-        meta_val,
-        ownership_policy_id,
-        OWNERSHIP_NAME,
-        ref_unit
-    )
-    console.log('updated: ', updateTx)
-
-    emulator.awaitBlock(5)
-
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-}
-
-async function mintWrongLabels() {
+    //
     
-    const {
-        THREAD_COUNT,
-        OWNERSHIP_NAME,
-        TOKEN_NAME,
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        token_policy_id,
-        emulator,
-        meta_val,
-        address1,
-        address2,
-        ownership_policy,
-    } = await setup()
+    lucid.selectWalletFromPrivateKey(user1)
 
+    //deploy
+    const txBuilder = lucid
+        .newTx()
+        .collectFrom([addr1_utxo], Data.void())
+        .attachMintingPolicy(ownership_policy)
+        .mintAssets({
+            [toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))]: BigInt(THREAD_COUNT)
+        }, Data.void())
+        .attachMintingPolicy(thread_policy)
+        .mintAssets({
+            [toUnit(thread_policy_id, fromText('thread'))] : BigInt(THREAD_COUNT)
+        }, Data.void())
 
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deployWithOwnership(
-        lucid,
-        user1,
-        addr1_utxo,
-        thread_policy,
-        THREAD_COUNT,
-        ownership_policy,
-        OWNERSHIP_NAME,
-        thread_validator_address,
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    const thread = (await lucid.utxosAt(thread_validator_address))[0];
-    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum)
-    const mint_id = dtm.mint_count + 1n
-    const new_dtm = { ...dtm, mint_count: mint_id }
-
-    const assets = {
-        [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 101)]: 1n,
-        [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 222)]: 1n,
+    for (let i = 0; i < THREAD_COUNT; i++){
+        txBuilder.payToContract(
+            thread_validator_address, 
+            { 
+                inline: Data.to<ThreadDatum>({
+                    mint_count: 0n,
+                    idx: BigInt(i)
+                }, ThreadDatum)
+            }, 
+            {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
     }
 
-    const ref_asset = {
-        [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 101)]: 1n,
-    }
+    const deployTxHash = await txBuilder.complete()
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
 
-    const {txHash: mintTx} = await mintCustom(
-        lucid,
-        user2,
-        thread,
-        token_policy,
-        thread_validator,
-        thread_policy,
-        lucidLib.utils.validatorToAddress(meta_val),
-        assets,
-        ref_asset,
-        new_dtm,
-    )
-    console.log('minted: ', mintTx)
-
-    emulator.awaitBlock(5)
-
-    console.log('address1: ', await lucid.utxosAt(address1))
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-
-}
-
-async function tryBurn(
-    THREAD_COUNT: number,
-    MAX_SUPPLY: number,
-    OWNERSHIP_NAME: string,
-    TOKEN_NAME: string,
-    ITER: number
-) {
-    
-    const {
-        lucid,
-        user1,
-        user2,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        token_policy_id,
-        emulator,
-        meta_val,
-        address1,
-        address2,
-        ownership_policy,
-    } = await setupForBurn(
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        OWNERSHIP_NAME,
-        TOKEN_NAME
-    )
-
-    // ------------------------------------------
-    // transactions 
+    console.log('deployed: ', deployTxHash)
      
-    const deployTx = await deployWithOwnership(
-        lucid,
-        user1,
-        addr1_utxo,
-        thread_policy,
-        THREAD_COUNT,
-        ownership_policy,
-        OWNERSHIP_NAME,
-        thread_validator_address,
-    )
-    console.log('deployed: ', deployTx);
-
     emulator.awaitBlock(5);
 
+    //mint 
     const thread = (await lucid.utxosAt(thread_validator_address))[0];
-    const dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum)
-    const mint_id = dtm.mint_count + 1n
-    const new_dtm = { ...dtm, mint_count: mint_id }
+    const ownership = (await lucid.utxosAt(address1)).find(o => o.assets[toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))] >= 1)
+    if (!ownership) throw new Error('no ownership')
 
-    const {txHash: mintTx} = await mintCustom(
-        lucid,
-        user2,
-        thread,
-        token_policy,
-        thread_validator,
-        thread_policy,
-        lucidLib.utils.validatorToAddress(meta_val),
-        { 
-            [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 222)]: 1n,
-            [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 100)]: 1n,
-        },
-        { [toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 100)]: 1n },
-        new_dtm,
-    )
-    console.log('minted: ', mintTx)
-
-    emulator.awaitBlock(5)
-
-    console.log('address1: ', await lucid.utxosAt(address1))
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-
-    const burnHash = await burn(
-        lucid,
-        user2,
-        {[toUnit(token_policy_id, fromText(TOKEN_NAME) + fromText(left_pad(2, mint_id.toString())), 222)]: -1n},
-        token_policy
-    )
-    console.log('burnt: ', burnHash)
-
-    emulator.awaitBlock(5)
-
-    console.log('address1: ', await lucid.utxosAt(address1))
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
-
-}
-
-async function tryTwoThreads() {
-    const {
-        THREAD_COUNT,
-        MAX_SUPPLY,
-        lucid,
-        user1,
-        addr1_utxo,
-        thread_policy,
-        thread_validator,
-        thread_validator_address,
-        token_policy,
-        emulator,
-        meta_val,
-        address2,
-        user2,
-        address1
-    } = await setup()
-
-    // ------------------------------------------
-    // transactions 
-     
-    const deployTx = await deploy(
-        lucid,
-        user1,
-        thread_policy,
-        thread_validator_address,
-        addr1_utxo,
-        THREAD_COUNT
-    )
-    console.log('deployed: ', deployTx);
-
-    emulator.awaitBlock(5);
-
-    const threadA = (await lucid.utxosAt(thread_validator_address))[0];
-    const threadB = (await lucid.utxosAt(thread_validator_address))[1];
-    
-    lucid.selectWalletFromPrivateKey(user2);
-
-    const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy);
-    const thread_policy_id = lucidLib.utils.mintingPolicyToId(thread_policy)
-    const thread_val_addr = lucidLib.utils.validatorToAddress(thread_validator)
-    const meta_val_addr = lucidLib.utils.validatorToAddress(meta_val)
-
-    const locked_thread_dtm = Data.from<ThreadDatum>(threadA.datum!, ThreadDatum) 
-
-    console.log('minting from thread with datum: ', locked_thread_dtm)
-
+    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
     const new_dtm: ThreadDatum = {
         mint_count: locked_thread_dtm.mint_count + 1n,
         idx: locked_thread_dtm.idx
@@ -1013,37 +392,395 @@ async function tryTwoThreads() {
 
     const mint_id = ((BigInt(MAX_SUPPLY) / BigInt(THREAD_COUNT)) * new_dtm.idx) + new_dtm.mint_count
     const id_text = left_pad(2, mint_id.toString())
+    console.log('minting from thread with datum: ', locked_thread_dtm)
 
     const [utxo] = await lucid.wallet.getUtxos()
 
-    const tx = await lucid
+    const mintTxHash = await lucid
         .newTx()
-        .collectFrom([utxo, threadA, threadB], Data.void())
+        .collectFrom([utxo, thread, ownership], Data.void())
         .attachMintingPolicy(token_policy)
         .mintAssets({
             [toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n,
             [toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n,
         }, Data.to<Action>('Minting', Action))
         .attachSpendingValidator(thread_validator)
-        .payToContract(thread_val_addr, 
+        .payToContract(thread_validator_address, 
                        { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
                        {[toUnit(thread_policy_id, fromText("thread"))] : 1n } )
-        .payToContract(meta_val_addr, 
+        .payToContract(meta_val_address,
                        { inline: Data.to<string>(fromText('some metadata'))},
                        {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n})
+        .payToAddress(address2,
+                       {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n}
+        )
         .complete()
-    const txSigned = await tx.sign().complete()
-    const txHash = await txSigned.submit() 
-
-    console.log('minted: ', txHash)
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
+    console.log('minted: ', mintTxHash)
 
     emulator.awaitBlock(5)
 
+    //const updateTx = await updateMetaData(
+    //    lucid, 
+    //    user1, 
+    //    meta_val,
+    //    ownership_policy_id,
+    //    OWNERSHIP_NAME,
+    //    ref_unit
+    //)
+    //console.log('updated: ', updateTx)
 
-    console.log('address1: ', await lucid.utxosAt(address1))
-    console.log('address2: ', await lucid.utxosAt(address2))
-    console.log('thread_val:', await lucid.utxosAt(thread_validator_address))
-    console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
+    //emulator.awaitBlock(5)
+
+    //console.log('address2: ', await lucid.utxosAt(address2))
+    //console.log('meta: ',     await lucid.utxosAt(lucidLib.utils.validatorToAddress(meta_val)))
+}
+
+async function mintAll() {
+    
+    const {
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        OWNERSHIP_NAME,
+        lucid,
+        user1,
+        addr1_utxo,
+        thread_policy,
+        thread_policy_id,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        token_policy_id,
+        emulator,
+        meta_val,
+        meta_val_address,
+        address1,
+        address2,
+        ownership_policy,
+        ownership_policy_id,
+    } = await setup()
+
+
+    // ------------------------------------------
+    // transactions 
+    //
+    
+    lucid.selectWalletFromPrivateKey(user1)
+
+    //deploy
+    const txBuilder = lucid
+        .newTx()
+        .collectFrom([addr1_utxo], Data.void())
+        .attachMintingPolicy(ownership_policy)
+        .mintAssets({
+            [toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))]: BigInt(THREAD_COUNT)
+        }, Data.void())
+        .attachMintingPolicy(thread_policy)
+        .mintAssets({
+            [toUnit(thread_policy_id, fromText('thread'))] : BigInt(THREAD_COUNT)
+        }, Data.void())
+
+    for (let i = 0; i < THREAD_COUNT; i++){
+        txBuilder.payToContract(
+            thread_validator_address, 
+            { 
+                inline: Data.to<ThreadDatum>({
+                    mint_count: 0n,
+                    idx: BigInt(i)
+                }, ThreadDatum)
+            }, 
+            {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
+    }
+
+    const deployTxHash = await txBuilder.complete()
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
+
+    console.log('deployed: ', deployTxHash)
+     
+    emulator.awaitBlock(5);
+
+    //mint 
+    //
+    for (let i = 0; i < MAX_SUPPLY; i++){
+
+        const thread = (await lucid.utxosAt(thread_validator_address)).find(
+            (o) => Data.from<ThreadDatum>(o.datum!, ThreadDatum).mint_count < MAX_SUPPLY / THREAD_COUNT
+        );
+        if (!thread) throw new Error('no thread found')
+
+        const ownership = (await lucid.utxosAt(address1)).find(o => o.assets[toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))] >= 1)
+        if (!ownership) throw new Error('no ownership')
+    
+        const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
+        const new_dtm: ThreadDatum = {
+            mint_count: locked_thread_dtm.mint_count + 1n,
+            idx: locked_thread_dtm.idx
+        }
+    
+        const mint_id = ((BigInt(MAX_SUPPLY) / BigInt(THREAD_COUNT)) * new_dtm.idx) + new_dtm.mint_count
+        const id_text = left_pad(2, mint_id.toString())
+        console.log('minting from thread with datum: ', locked_thread_dtm)
+    
+        const [utxo] = await lucid.wallet.getUtxos()
+    
+        const mintTxHash = await lucid
+            .newTx()
+            .collectFrom([utxo, thread, ownership], Data.void())
+            .attachMintingPolicy(token_policy)
+            .mintAssets({
+                [toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n,
+                [toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n,
+            }, Data.to<Action>('Minting', Action))
+            .attachSpendingValidator(thread_validator)
+            .payToContract(thread_validator_address, 
+                           { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
+                           {[toUnit(thread_policy_id, fromText("thread"))] : 1n } )
+            .payToContract(meta_val_address,
+                           { inline: Data.to<string>(fromText('some metadata'))},
+                           {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n})
+            .payToAddress(address2,
+                           {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n}
+            )
+            .complete()
+            .then((tx) => tx.sign().complete())
+            .then((tx) => tx.submit())
+        console.log('minted: ', mintTxHash)
+    
+        emulator.awaitBlock(5)
+
+    }
+
+}
+
+async function mintTooMany() {
+    
+    const {
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        OWNERSHIP_NAME,
+        lucid,
+        user1,
+        addr1_utxo,
+        thread_policy,
+        thread_policy_id,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        token_policy_id,
+        emulator,
+        meta_val,
+        meta_val_address,
+        address1,
+        address2,
+        ownership_policy,
+        ownership_policy_id,
+    } = await setup()
+
+
+    // ------------------------------------------
+    // transactions 
+    //
+    
+    lucid.selectWalletFromPrivateKey(user1)
+
+    //deploy
+    const txBuilder = lucid
+        .newTx()
+        .collectFrom([addr1_utxo], Data.void())
+        .attachMintingPolicy(ownership_policy)
+        .mintAssets({
+            [toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))]: BigInt(THREAD_COUNT)
+        }, Data.void())
+        .attachMintingPolicy(thread_policy)
+        .mintAssets({
+            [toUnit(thread_policy_id, fromText('thread'))] : BigInt(THREAD_COUNT)
+        }, Data.void())
+
+    for (let i = 0; i < THREAD_COUNT; i++){
+        txBuilder.payToContract(
+            thread_validator_address, 
+            { 
+                inline: Data.to<ThreadDatum>({
+                    mint_count: 0n,
+                    idx: BigInt(i)
+                }, ThreadDatum)
+            }, 
+            {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
+    }
+
+    const deployTxHash = await txBuilder.complete()
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
+
+    console.log('deployed: ', deployTxHash)
+     
+    emulator.awaitBlock(5);
+
+    //mint 
+    //
+    for (let i = 0; i < MAX_SUPPLY + 1; i++){
+
+        let thread = (await lucid.utxosAt(thread_validator_address)).find(
+            (o) => Data.from<ThreadDatum>(o.datum!, ThreadDatum).mint_count < MAX_SUPPLY / THREAD_COUNT
+        );
+        if (!thread) thread = (await lucid.utxosAt(thread_validator_address))[0]
+
+        const ownership = (await lucid.utxosAt(address1)).find(o => o.assets[toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))] >= 1)
+        if (!ownership) throw new Error('no ownership')
+    
+        const locked_thread_dtm = Data.from<ThreadDatum>(thread!.datum!, ThreadDatum) 
+        const new_dtm: ThreadDatum = {
+            mint_count: locked_thread_dtm.mint_count + 1n,
+            idx: locked_thread_dtm.idx
+        }
+    
+        const mint_id = ((BigInt(MAX_SUPPLY) / BigInt(THREAD_COUNT)) * new_dtm.idx) + new_dtm.mint_count
+        const id_text = left_pad(2, mint_id.toString())
+        console.log('minting from thread with datum: ', locked_thread_dtm)
+    
+        const [utxo] = await lucid.wallet.getUtxos()
+    
+        const mintTxHash = await lucid
+            .newTx()
+            .collectFrom([utxo, thread, ownership], Data.void())
+            .attachMintingPolicy(token_policy)
+            .mintAssets({
+                [toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n,
+                [toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n,
+            }, Data.to<Action>('Minting', Action))
+            .attachSpendingValidator(thread_validator)
+            .payToContract(thread_validator_address, 
+                           { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
+                           {[toUnit(thread_policy_id, fromText("thread"))] : 1n } )
+            .payToContract(meta_val_address,
+                           { inline: Data.to<string>(fromText('some metadata'))},
+                           {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n})
+            .payToAddress(address2,
+                           {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 222)]: 1n}
+            )
+            .complete()
+            .then((tx) => tx.sign().complete())
+            .then((tx) => tx.submit())
+        console.log('minted: ', mintTxHash)
+    
+        emulator.awaitBlock(5)
+
+    }
+}
+
+async function mintWrongLabels() {
+    
+    const {
+        THREAD_COUNT,
+        MAX_SUPPLY,
+        OWNERSHIP_NAME,
+        lucid,
+        user1,
+        addr1_utxo,
+        thread_policy,
+        thread_policy_id,
+        thread_validator,
+        thread_validator_address,
+        token_policy,
+        token_policy_id,
+        emulator,
+        meta_val_address,
+        address1,
+        address2,
+        ownership_policy,
+        ownership_policy_id,
+    } = await setup()
+
+
+    // ------------------------------------------
+    // transactions 
+    //
+    
+    lucid.selectWalletFromPrivateKey(user1)
+
+    //deploy
+    const txBuilder = lucid
+        .newTx()
+        .collectFrom([addr1_utxo], Data.void())
+        .attachMintingPolicy(ownership_policy)
+        .mintAssets({
+            [toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))]: BigInt(THREAD_COUNT)
+        }, Data.void())
+        .attachMintingPolicy(thread_policy)
+        .mintAssets({
+            [toUnit(thread_policy_id, fromText('thread'))] : BigInt(THREAD_COUNT)
+        }, Data.void())
+
+    for (let i = 0; i < THREAD_COUNT; i++){
+        txBuilder.payToContract(
+            thread_validator_address, 
+            { 
+                inline: Data.to<ThreadDatum>({
+                    mint_count: 0n,
+                    idx: BigInt(i)
+                }, ThreadDatum)
+            }, 
+            {[toUnit(thread_policy_id, fromText('thread'))] : 1n})
+    }
+
+    const deployTxHash = await txBuilder.complete()
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
+
+    console.log('deployed: ', deployTxHash)
+     
+    emulator.awaitBlock(5);
+
+    //mint 
+    const thread = (await lucid.utxosAt(thread_validator_address))[0];
+    const ownership = (await lucid.utxosAt(address1)).find(o => o.assets[toUnit(ownership_policy_id, fromText(OWNERSHIP_NAME))] >= 1)
+    if (!ownership) throw new Error('no ownership')
+
+    const locked_thread_dtm = Data.from<ThreadDatum>(thread.datum!, ThreadDatum) 
+    const new_dtm: ThreadDatum = {
+        mint_count: locked_thread_dtm.mint_count + 1n,
+        idx: locked_thread_dtm.idx
+    }
+
+    const mint_id = ((BigInt(MAX_SUPPLY) / BigInt(THREAD_COUNT)) * new_dtm.idx) + new_dtm.mint_count
+    const id_text = left_pad(2, mint_id.toString())
+    console.log('minting from thread with datum: ', locked_thread_dtm)
+
+    const [utxo] = await lucid.wallet.getUtxos()
+
+    const mintTxHash = await lucid
+        .newTx()
+        .collectFrom([utxo, thread, ownership], Data.void())
+        .attachMintingPolicy(token_policy)
+        .mintAssets({
+            [toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n,
+            [toUnit(token_policy_id, fromText('token') + fromText(id_text), 101)]: 1n,
+        }, Data.to<Action>('Minting', Action))
+        .attachSpendingValidator(thread_validator)
+        .payToContract(thread_validator_address, 
+                       { inline: Data.to<ThreadDatum>(new_dtm, ThreadDatum)},
+                       {[toUnit(thread_policy_id, fromText("thread"))] : 1n } )
+        .payToContract(meta_val_address,
+                       { inline: Data.to<string>(fromText('some metadata'))},
+                       {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 100)]: 1n})
+        .payToAddress(address2,
+                       {[toUnit(token_policy_id, fromText('token') + fromText(id_text), 101)]: 1n}
+        )
+        .complete()
+        .then((tx) => tx.sign().complete())
+        .then((tx) => tx.submit())
+    console.log('minted: ', mintTxHash)
+
+    emulator.awaitBlock(5)
+
+}
+
+async function tryBurn() {
+}
+
+async function tryTwoThreads() {
 }
 
 // -----------------------------------------------------------------------------
@@ -1072,18 +809,18 @@ async function testSuceeds( test: any) {
 
 function main() {
      Deno.test('mint one', () => testSuceeds(mintOne));
-     Deno.test('mint all', () => testSuceeds(mintAll))
+     Deno.test('mint all', () => testSuceeds(mintAll));
      Deno.test('mint too many', () => testFails(mintTooMany))
-     Deno.test('update metadata', () => testSuceeds(tryUpdate))
      Deno.test('mint with wrong label', () => testFails(mintWrongLabels))
-     Deno.test('burn', () => testSuceeds(() => tryBurn(
-       1,
-       10,
-       'ownership',
-       'token',
-       1
-     )))
-     Deno.test('try spent 2 threads', () => testFails(() => tryTwoThreads()))
+     //Deno.test('update metadata', () => testSuceeds(tryUpdate))
+     //Deno.test('burn', () => testSuceeds(() => tryBurn(
+     //  1,
+     //  10,
+     //  'ownership',
+     //  'token',
+     //  1
+     //)))
+     //Deno.test('try spent 2 threads', () => testFails(() => tryTwoThreads()))
     
      Deno.test('leftpad1', () => { if(left_pad(2, '1') != '01') throw new Error('wrong') } )
      Deno.test('leftpad1', () => { if(left_pad(2, '10') != '10') throw new Error('wrong') } )
@@ -1091,4 +828,3 @@ function main() {
 }
 
 main();
-

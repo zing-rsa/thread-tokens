@@ -24,6 +24,8 @@ pub type TokenPolicyInfo {
   max_supply: Int,
   thread_count: Int,
   meta_val: ValidatorHash,
+  owner_policy: PolicyId,
+  owner_name: ByteArray,
 }
 
 pub type MetaInfo {

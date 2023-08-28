@@ -46,6 +46,14 @@ validator(info: TokenPolicyInfo) {
             },
           )
 
+        expect Some(_owner_signed) =
+          list.find(
+            ctx.transaction.inputs,
+            fn(i) {
+              quantity_of(i.output.value, info.owner_policy, info.owner_name) >= 1
+            },
+          )
+
         let id =
           info.max_supply / info.thread_count * thread_dtm.idx + thread_dtm.mint_count + 1
 

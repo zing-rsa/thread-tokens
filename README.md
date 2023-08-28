@@ -79,5 +79,5 @@ todo:
         - this might need to be re-thought slightly because the metadata utxo must not be minted by the frontend
         - 2 solutions: 
             - mint the ref utxo at another stage
-            - manage minting completely on the backend
+            - manage minting completely on the backend(going with this for now)
 
