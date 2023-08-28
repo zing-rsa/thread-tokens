@@ -19,7 +19,7 @@ validator(info: MetaInfo) {
             i.output.value,
             info.ownership_policy,
             info.ownership_name,
-          ) == 1
+          ) >= 1
         },
       )
 
