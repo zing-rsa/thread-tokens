@@ -29,7 +29,8 @@ async function setupChain(
     debug: boolean,
     threadValidatorAddress: Address,
     threadUnit: Unit,
-    threadDatum: ThreadDatum
+    threadDatum: ThreadDatum,
+    owner_unit: Unit
 ) {
 
     let lucid; 
@@ -45,9 +46,20 @@ async function setupChain(
             { 
                 address: threadValidatorAddress, 
                 assets: { [threadUnit]: 1n }, 
-                datum: Data.to<ThreadDatum>(threadDatum, ThreadDatum)
+                outputData: {
+                    inline: Data.to<ThreadDatum>(threadDatum, ThreadDatum)
+                } 
             },
-            { address: address1, assets: { lovelace: 100_000_000n } }
+            { address: address1, assets: 
+                { 
+                    lovelace: 100_000_000n,
+                } 
+            },
+            { address: address1, assets: 
+                { 
+                    [owner_unit] : 1n
+                } 
+            }
         ]);
         lucid = await Lucid.new(emulator);
     } else {
@@ -67,6 +79,7 @@ async function mint(
     lucid:Lucid,
     user_key:string,
     thread:UTxO,
+    owner: UTxO,
     policy:MintingPolicy,
     thread_val: SpendingValidator,
     thread_mintpolicy: MintingPolicy,
@@ -85,7 +98,7 @@ async function mint(
 
     const tx = await lucid
         .newTx()
-        .collectFrom([utxo, thread], Data.void())
+        .collectFrom([utxo, thread, owner], Data.void())
         .attachMintingPolicy(policy)
         .mintAssets(assets, Data.to<Action>('Minting', Action))
         .attachSpendingValidator(thread_val)
@@ -120,28 +133,36 @@ async function main() {
     const thread_val_address = lucidLib.utils.validatorToAddress(projectDetails.thread_validator)
     const thread_policy = lucidLib.utils.mintingPolicyToId(projectDetails.thread_policy)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(projectDetails.token_policy)
+    const ownership_policy_id = lucidLib.utils.mintingPolicyToId(projectDetails.ownership_policy)
 
-    const {lucid, user1, emulator} = await setupChain(
+    const {lucid, user1, emulator, address1} = await setupChain(
         flags.debug,
         thread_val_address,
         toUnit(thread_policy, fromText("thread")),
-        { mint_count: 0n, idx: 0n }
+        { mint_count: 0n, idx: 0n },
+        toUnit(ownership_policy_id, fromText(projectDetails.oname))
     );
 
-    const [utxo] = await lucid.utxosAt(thread_val_address);
+    const [thread_utxo] = await lucid.utxosAt(thread_val_address);
 
-    const existing_dtm = Data.from<ThreadDatum>(utxo.datum!, ThreadDatum)
+    const existing_dtm = Data.from<ThreadDatum>(thread_utxo.datum!, ThreadDatum)
     const dtm = {
         mint_count: existing_dtm.mint_count+1n,
         idx: existing_dtm.idx
     }
+
+    const owner_utxo = (await lucid.utxosAt(address1)).find((o) => 
+        o.assets[toUnit(ownership_policy_id, fromText(projectDetails.oname))] >= 1n
+    )
+    if (!owner_utxo) throw new Error('no ownership utxo found')
 
     const tname = projectDetails.tname + left_pad(projectDetails.leftpad, (existing_dtm.mint_count+1n).toString())
 
     const txHash = await mint(
         lucid,
         user1,
-        utxo,
+        thread_utxo,
+        owner_utxo,
         projectDetails.token_policy,
         projectDetails.thread_validator,
         projectDetails.thread_policy,
