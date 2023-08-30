@@ -44,7 +44,9 @@ export const TokenPolicyInfoShape = Data.Object({
   token_id_leftpad: Data.Integer(),
   max_supply: Data.Integer(),
   thread_count: Data.Integer(),
-  meta_val: Data.Bytes()
+  meta_val: Data.Bytes(),
+  owner_policy: Data.Bytes(),
+  owner_name: Data.Bytes()
 })
 export type TokenPolicyInfo = Data.Static<typeof TokenPolicyInfoShape>
 export const TokenPolicyInfo = TokenPolicyInfoShape as unknown as TokenPolicyInfo

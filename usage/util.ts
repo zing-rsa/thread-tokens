@@ -107,6 +107,10 @@ export function getOwnershipPolicy(utxo: UTxO): MintingPolicy {
     }
 }
 
+// ------------------------------------------------------------------------
+// flags
+//
+
 export function getDeployFlags(): DeployFlags {
     const args = parse(Deno.args, {
         string: ["pname", "tname", "oname", "sup", "threads", "leftpad"],

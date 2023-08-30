@@ -38,7 +38,9 @@ async function setupChain(
             { 
                 address: meta_val_addr, 
                 assets: { [ref_unit]: 1n }, 
-                datum: Data.to<MetaData>(dtm, MetaData)
+                outputData: {
+                    inline: Data.to<MetaData>(dtm, MetaData)
+                }            
             },
             { 
                 address: address1, 

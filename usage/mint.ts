@@ -155,6 +155,7 @@ async function main() {
         o.assets[toUnit(ownership_policy_id, fromText(projectDetails.oname))] >= 1n
     )
     if (!owner_utxo) throw new Error('no ownership utxo found')
+    console.log('owner: ', owner_utxo)
 
     const tname = projectDetails.tname + left_pad(projectDetails.leftpad, (existing_dtm.mint_count+1n).toString())
 

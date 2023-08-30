@@ -148,7 +148,9 @@ async function setupContracts(
         token_id_leftpad: BigInt(ID_LEFTPAD),
         max_supply: BigInt(MAX_SUPPLY),
         thread_count: BigInt(THREAD_COUNT),
-        meta_val: meta_val_hash
+        meta_val: meta_val_hash,
+        owner_policy: ownership_policy_id,
+        owner_name: fromText(OWNERSHIP_NAME)
     }
     const token_policy = getTokenPolicy(token_policy_info)
     const token_policy_id = lucidLib.utils.mintingPolicyToId(token_policy)

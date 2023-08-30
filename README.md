@@ -75,9 +75,10 @@ todo:
         - adapted thread token to enforce only a single utxo and token can be consumed 
     - SOLVED: consume a thread by burning a token?
         - made sure in thread that token mint is positive(== 1)
-    - Currently the script is setup with the goal of allowing minting transactions from the frontend
+    - SOLVED: Currently the script is setup with the goal of allowing minting transactions from the frontend
         - this might need to be re-thought slightly because the metadata utxo must not be minted by the frontend
         - 2 solutions: 
             - mint the ref utxo at another stage
             - manage minting completely on the backend(going with this for now)
+
 
